@@ -241,6 +241,8 @@ int main(int argc, char *argv[]) {
 	imu_msg.linear_acceleration.z=0.0;
 	imu_msg.linear_acceleration_covariance={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // fixed
 	
+	nav_msgs::Odometry odom;
+
 	diagnostic_msgs::DiagnosticStatus system_status_msg;
 	system_status_msg.level = 0; // default OK state
 	system_status_msg.name = "System Status";
@@ -255,6 +257,7 @@ int main(int argc, char *argv[]) {
 	an_decoder_t an_decoder;
 	an_packet_t *an_packet;
 	system_state_packet_t system_state_packet;
+	body_velocity_packet_t body_velocity_packet;
 	quaternion_orientation_standard_deviation_packet_t quaternion_orientation_standard_deviation_packet;
 	int bytes_received;
 	
@@ -379,7 +382,6 @@ int main(int argc, char *argv[]) {
 								tf_name
 							));
 
-							nav_msgs::Odometry odom;
 							odom.header.stamp.sec=system_state_packet.unix_time_seconds;
 							odom.header.stamp.nsec=system_state_packet.microseconds*1000;
 
@@ -402,18 +404,10 @@ int main(int argc, char *argv[]) {
 								0.0, 0.0, pow(system_state_packet.standard_deviation[2],2)
 							};
 
-							//set the velocity
-							odom.twist.twist.linear.x = system_state_packet.velocity[0];
-							odom.twist.twist.linear.y = system_state_packet.velocity[1];
-							odom.twist.twist.linear.z = system_state_packet.velocity[2];
-
 							// Set angular velocity.
 							odom.twist.twist.angular.x = system_state_packet.angular_velocity[0];
 							odom.twist.twist.angular.y = system_state_packet.angular_velocity[1];
 							odom.twist.twist.angular.z = system_state_packet.angular_velocity[2];
-
-							//publish the message
-							odom_pub.publish(odom);
 
 						}
 
@@ -581,7 +575,16 @@ int main(int argc, char *argv[]) {
 						}	
 					}
 				}
-				
+
+				// body velocity packet x, y, z (instead of north, east, down as reported by system state packet)
+				if (an_packet->id == packet_id_body_velocity) {
+					if(decode_body_velocity_packet(&body_velocity_packet, an_packet) == 0) {
+						odom.twist.twist.linear.x = body_velocity_packet.velocity[0];
+						odom.twist.twist.linear.y = body_velocity_packet.velocity[1];
+						odom.twist.twist.linear.z = body_velocity_packet.velocity[2];
+					}
+				}
+
 				// quaternion orientation standard deviation packet //
 				if (an_packet->id == packet_id_quaternion_orientation_standard_deviation) 
 				{
@@ -605,6 +608,7 @@ int main(int argc, char *argv[]) {
 				imu_pub.publish(imu_msg);
 				system_status_pub.publish(system_status_msg);
 				filter_status_pub.publish(filter_status_msg);
+				odom_pub.publish(odom);
 			}
 		}
 		ros::spinOnce();
