@@ -10,6 +10,9 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
+  tf
+  image_transport
+  cv_bridge
 )
 
 ## System dependencies are found with CMake's conventions
@@ -119,6 +122,9 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
+find_package(Eigen3 REQUIRED)
+include_directories(EIGEN3_INCLUDE_DIR)
+
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
 #   src/${PROJECT_NAME}/an_driver.cpp
@@ -200,5 +206,5 @@ include_directories(
 #########################
 ## Advanced Navigation ##
 #########################
-add_executable(advanced_navigation_driver src/an_driver.cpp src/spatial_packets.c src/an_packet_protocol.c src/rs232/rs232.c)
+add_executable(advanced_navigation_driver src/an_driver.cpp src/spatial_packets.c src/an_packet_protocol.c src/rs232/rs232.c src/info_display.cpp)
 target_link_libraries(advanced_navigation_driver ${catkin_LIBRARIES})

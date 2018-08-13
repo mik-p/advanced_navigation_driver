@@ -32,391 +32,450 @@
 #include <stdint.h>
 #include <math.h>
 #include <unistd.h>
+#include <signal.h>
+#include <fstream>
 
 #include "rs232/rs232.h"
 #include "an_packet_protocol.h"
 #include "spatial_packets.h"
 
-#include <sensor_msgs/NavSatFix.h>
 #include <sensor_msgs/TimeReference.h>
-#include <sensor_msgs/Imu.h>
-#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Vector3Stamped.h>
 #include <diagnostic_msgs/DiagnosticArray.h>
+
+#include <tf/tf.h>
+#include <tf/transform_broadcaster.h>
+
+#include <image_transport/image_transport.h>
+
+#include <eigen3/Eigen/Eigen>
+
+using namespace std;
 
 #define RADIANS_TO_DEGREES (180.0/M_PI)
 
+void load_system_status(const system_state_packet_t &system_state_packet,
+    diagnostic_msgs::DiagnosticStatus &system_status_msg) {
+  system_status_msg.message = "";
+  system_status_msg.level = 0; // default OK state
+  if (system_state_packet.system_status.b.system_failure) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "0. System Failure! ";
+  }
+  if (system_state_packet.system_status.b.accelerometer_sensor_failure) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "1. Accelerometer Sensor Failure! ";
+  }
+  if (system_state_packet.system_status.b.gyroscope_sensor_failure) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "2. Gyroscope Sensor Failure! ";
+  }
+  if (system_state_packet.system_status.b.magnetometer_sensor_failure) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "3. Magnetometer Sensor Failure! ";
+  }
+  if (system_state_packet.system_status.b.pressure_sensor_failure) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "4. Pressure Sensor Failure! ";
+  }
+  if (system_state_packet.system_status.b.gnss_failure) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "5. GNSS Failure! ";
+  }
+  if (system_state_packet.system_status.b.accelerometer_over_range) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "6. Accelerometer Over Range! ";
+  }
+  if (system_state_packet.system_status.b.gyroscope_over_range) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "7. Gyroscope Over Range! ";
+  }
+  if (system_state_packet.system_status.b.magnetometer_over_range) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "8. Magnetometer Over Range! ";
+  }
+  if (system_state_packet.system_status.b.pressure_over_range) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "9. Pressure Over Range! ";
+  }
+  if (system_state_packet.system_status.b.minimum_temperature_alarm) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "10. Minimum Temperature Alarm! ";
+  }
+  if (system_state_packet.system_status.b.maximum_temperature_alarm) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "11. Maximum Temperature Alarm! ";
+  }
+  if (system_state_packet.system_status.b.low_voltage_alarm) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "12. Low Voltage Alarm! ";
+  }
+  if (system_state_packet.system_status.b.high_voltage_alarm) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "13. High Voltage Alarm! ";
+  }
+  if (system_state_packet.system_status.b.gnss_antenna_disconnected) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "14. GNSS Antenna Disconnected! ";
+  }
+  if (system_state_packet.system_status.b.serial_port_overflow_alarm) {
+      system_status_msg.level = 2; // ERROR state
+      system_status_msg.message = system_status_msg.message + "15. Data Output Overflow Alarm! ";
+  }
+}
+
+void load_filter_status(const system_state_packet_t &system_state_packet,
+    diagnostic_msgs::DiagnosticStatus &filter_status_msg) {
+  filter_status_msg.message = "";
+  filter_status_msg.level = 0; // default OK state
+  if (system_state_packet.filter_status.b.orientation_filter_initialised) {
+      filter_status_msg.message = filter_status_msg.message + "0. Orientation Filter Initialised. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "0. Orientation Filter NOT Initialised. ";
+  }
+  if (system_state_packet.filter_status.b.ins_filter_initialised) {
+      filter_status_msg.message = filter_status_msg.message + "1. Navigation Filter Initialised. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "1. Navigation Filter NOT Initialised. ";
+  }
+  if (system_state_packet.filter_status.b.heading_initialised) {
+      filter_status_msg.message = filter_status_msg.message + "2. Heading Initialised. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "2. Heading NOT Initialised. ";
+  }
+  if (system_state_packet.filter_status.b.utc_time_initialised) {
+      filter_status_msg.message = filter_status_msg.message + "3. UTC Time Initialised. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "3. UTC Time NOT Initialised. ";
+  }
+  if (system_state_packet.filter_status.b.event1_flag) {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "7. Event 1 Occured. ";
+  }
+  else {
+      filter_status_msg.message = filter_status_msg.message + "7. Event 1 NOT Occured. ";
+  }
+  if (system_state_packet.filter_status.b.event2_flag) {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "8. Event 2 Occured. ";
+  }
+  else {
+      filter_status_msg.message = filter_status_msg.message + "8. Event 2 NOT Occured. ";
+  }
+  if (system_state_packet.filter_status.b.internal_gnss_enabled) {
+      filter_status_msg.message = filter_status_msg.message + "9. Internal GNSS Enabled. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "9. Internal GNSS NOT Enabled. ";
+  }
+  if (system_state_packet.filter_status.b.magnetic_heading_enabled) {
+      filter_status_msg.message = filter_status_msg.message + "10. Magnetic Heading Active. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "10. Magnetic Heading NOT Active. ";
+  }
+  if (system_state_packet.filter_status.b.velocity_heading_enabled) {
+      filter_status_msg.message = filter_status_msg.message + "11. Velocity Heading Enabled. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "11. Velocity Heading NOT Enabled. ";
+  }
+  if (system_state_packet.filter_status.b.atmospheric_altitude_enabled) {
+      filter_status_msg.message = filter_status_msg.message + "12. Atmospheric Altitude Enabled. ";
+  }
+  else {
+      filter_status_msg.message = filter_status_msg.message + "12. Atmospheric Altitude NOT Enabled. ";
+      filter_status_msg.level = 1; // WARN state
+  }
+  if (system_state_packet.filter_status.b.external_position_active) {
+      filter_status_msg.message = filter_status_msg.message + "13. External Position Active. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "13. External Position NOT Active. ";
+  }
+  if (system_state_packet.filter_status.b.external_velocity_active) {
+      filter_status_msg.message = filter_status_msg.message + "14. External Velocity Active. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "14. External Velocity NOT Active. ";
+  }
+  if (system_state_packet.filter_status.b.external_heading_active) {
+      filter_status_msg.message = filter_status_msg.message + "15. External Heading Active. ";
+  }
+  else {
+      filter_status_msg.level = 1; // WARN state
+      filter_status_msg.message = filter_status_msg.message + "15. External Heading NOT Active. ";
+  }
+}
+
+Eigen::Matrix3f rollM(const float roll) {
+  Eigen::Matrix3f Rx;
+  float cr = cos(roll);
+  float sr = sin(roll);
+  Rx << 1.0, 0.0, 0.0,
+        0.0,  cr, -sr,
+        0.0,  sr,  cr;
+  return Rx;
+}
+
+Eigen::Matrix3f pitchM(const float pitch) {
+  Eigen::Matrix3f Ry;
+  float cp = cos(pitch);
+  float sp = sin(pitch);
+  Ry <<  cp, 0.0,  sp,
+        0.0, 1.0, 0.0,
+        -sp, 0.0,  cp;
+  return Ry;
+}
+
+Eigen::Matrix3f yawM(const float yaw) {
+  Eigen::Matrix3f Rz;
+  float cy = cos(yaw);
+  float sy = sin(yaw);
+  Rz <<  cy, -sy, 0.0,
+         sy,  cy, 0.0,
+        0.0, 0.0, 1.0;
+  return Rz;
+}
+
+void load_orientation(const float *rpy, geometry_msgs::Quaternion &orientation, bool should_discard_heading) {
+  // Convert roll, pitch, yaw from radians to quaternion format //
+  float phi = rpy[0] / 2.0f;
+  float theta = rpy[1] / 2.0f;
+  float psi = should_discard_heading ? 0.0 : rpy[2] / 2.0f;
+
+  float sin_phi = sinf(phi);
+  float cos_phi = cosf(phi);
+  float sin_theta = sinf(theta);
+  float cos_theta = cosf(theta);
+  float sin_psi = sinf(psi);
+  float cos_psi = cosf(psi);
+  orientation.x = -cos_phi * sin_theta * sin_psi + sin_phi * cos_theta * cos_psi;
+  orientation.y = cos_phi * sin_theta * cos_psi + sin_phi * cos_theta * sin_psi;
+  orientation.z = cos_phi * cos_theta * sin_psi - sin_phi * sin_theta * cos_psi;
+  orientation.w = cos_phi * cos_theta * cos_psi + sin_phi * sin_theta * sin_psi;
+
+  /*cerr << orientation << endl;
+
+  Eigen::Quaternionf XYZ_q(rollM(rpy[0]) * pitchM(rpy[1]) * yawM(rpy[2]));
+  cerr << XYZ_q.x() << " " << XYZ_q.y() << " " << XYZ_q.z() << " " << XYZ_q.w() << endl;
+
+  Eigen::Quaternionf ZYX_q(yawM(rpy[2]) * pitchM(rpy[1]) * rollM(rpy[0]));
+  cerr << ZYX_q.x() << " " << ZYX_q.y() << " " << ZYX_q.z() << " " << ZYX_q.w() << endl;*/
+}
+
+void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, float std_deviation_threshold);
+
+class JsonGenerator {
+public:
+  JsonGenerator(void) : isOpened(false), isFirst(true) {
+  }
+
+  void openFile(const string &filename) {
+    file.open(filename.c_str());
+    file << endl << "[" << endl;
+    isOpened = true;
+  }
+
+  void genDict(const float timeStamp,
+      const geometry_msgs::Quaternion &quaternion,
+      const geometry_msgs::Vector3 eulerStdDev) {
+    if(isOpened) {
+      if(!isFirst) {
+        file << ", " << endl;
+      }
+      isFirst = false;
+      file << "{ \"type\":\"quat_data\", \"timeStamp\":" << timeStamp << ", ";
+      file << "\"quaternion\":[" << quaternion.x << ", " << quaternion.y << ", " << quaternion.z << ", " << quaternion.w << "], ";
+      file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "] }";
+    }
+  }
+
+  void close(void) {
+    if(isOpened) {
+      file << "]" << endl;
+      file.close();
+    }
+  }
+
+private:
+  ofstream file;
+  bool isOpened, isFirst;
+};
+
+JsonGenerator generator;
+
+void shutdownHandler(int sig) {
+  generator.close();
+  ros::shutdown();
+}
+
+// SpatialDual publish NEMEA timestamps within current hour to Velodyne
+float fixHourOverflow(const float hourTimestamp) {
+  static int hours = 0;
+  static float last_timestamp = -1.0;
+  if(last_timestamp > hourTimestamp) {
+    hours++;
+  }
+  last_timestamp = hourTimestamp;
+  return last_timestamp + 60*60*hours;
+}
+
+
 int main(int argc, char *argv[]) {
-	// Set up ROS node //
-	ros::init(argc, argv, "an_device_node");
-	ros::NodeHandle nh;
-	ros::NodeHandle pnh("~");
-	
-	printf("\nYour Advanced Navigation ROS driver is currently running\nPress Ctrl-C to interrupt\n");
+  // Set up ROS node //
+  ros::init(argc, argv, "an_device_node", ros::init_options::NoSigintHandler);
+  ros::NodeHandle nh;
+  signal(SIGINT, shutdownHandler);
+  ros::NodeHandle pnh("~");
 
-	// Set up the COM port
-	std::string com_port;
-	int baud_rate;
-	std::string imu_frame_id;
-	std::string nav_sat_frame_id;
-	std::string topic_prefix;
+  printf("\nYour Advanced Navigation ROS driver is currently running\nPress Ctrl-C to interrupt\n");
 
-	if (argc >= 3) {
-		com_port = std::string(argv[1]);
-		baud_rate = atoi(argv[2]);
-	}
-	else {
-		pnh.param("port", com_port, std::string("/dev/ttyUSB0"));
-		pnh.param("baud_rate", baud_rate, 115200);
-	}
+  // Set up the COM port
+  std::string com_port;
+  int baud_rate;
+  float std_deviation_threshold;
+  std::string output_filename;
+  bool should_discard_heading;
 
-	pnh.param("imu_frame_id", imu_frame_id, std::string("imu"));
-	pnh.param("nav_sat_frame_id", nav_sat_frame_id, std::string("gps"));
-	pnh.param("topic_prefix", topic_prefix, std::string("an_device"));
+  pnh.param<std::string>("uart_port", com_port, "/dev/ttyUSB0");
+  pnh.param<int>("uart_baud_rate", baud_rate, 115200);
+  pnh.param<float>("std_deviation_threshold", std_deviation_threshold, 0.6);
+  pnh.param<std::string>("output_file", output_filename, "");
+  pnh.param<bool>("discard_heading", should_discard_heading, true);
 
-	// Initialise Publishers and Topics //
-	ros::Publisher nav_sat_fix_pub=nh.advertise<sensor_msgs::NavSatFix>(topic_prefix + "/NavSatFix",10);
-	ros::Publisher twist_pub=nh.advertise<geometry_msgs::Twist>(topic_prefix + "/Twist",10);
-	ros::Publisher imu_pub=nh.advertise<sensor_msgs::Imu>(topic_prefix + "/Imu",10);
-	ros::Publisher system_status_pub=nh.advertise<diagnostic_msgs::DiagnosticStatus>(topic_prefix + "/SystemStatus",10);
-	ros::Publisher filter_status_pub=nh.advertise<diagnostic_msgs::DiagnosticStatus>(topic_prefix + "/FilterStatus",10);
+  // Initialise Publishers and Topics //
+  ros::Publisher orientation_pub = nh.advertise<geometry_msgs::PoseStamped>("imu_pose", 10);
+  ros::Publisher orientation_err_pub = nh.advertise<geometry_msgs::Vector3Stamped>("imu_pose_errors", 10);
+  ros::Publisher timeref_pub = nh.advertise<sensor_msgs::TimeReference>("imu_timeref", 10);
+  ros::Publisher system_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_status", 10);
+  ros::Publisher filter_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_filter_status", 10);
+  image_transport::ImageTransport it(nh);
+  image_transport::Publisher display_pub = it.advertise("info_display", 10);
 
-	// Initialise messages
-	sensor_msgs::NavSatFix nav_sat_fix_msg;
-	nav_sat_fix_msg.header.stamp.sec=0;
-	nav_sat_fix_msg.header.stamp.nsec=0;
-	nav_sat_fix_msg.header.frame_id='0';
-	nav_sat_fix_msg.status.status=0;
-	nav_sat_fix_msg.status.service=1; // fixed to GPS
-	nav_sat_fix_msg.latitude=0.0;
-	nav_sat_fix_msg.longitude=0.0;
-	nav_sat_fix_msg.altitude=0.0;
-	nav_sat_fix_msg.position_covariance={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-	nav_sat_fix_msg.position_covariance_type=2; // fixed to variance on the diagonal
+  geometry_msgs::PoseStamped orientation_msg;
+  orientation_msg.header.frame_id = "imu_base";
 
-	geometry_msgs::Twist twist_msg;
-	twist_msg.linear.x=0.0;
-	twist_msg.linear.y=0.0;
-	twist_msg.linear.z=0.0;
-	twist_msg.angular.x=0.0;
-	twist_msg.angular.y=0.0;
-	twist_msg.angular.z=0.0;
+  geometry_msgs::Vector3Stamped orientation_errors_msg;
+  orientation_errors_msg.header.frame_id = "imu_base";
 
-	sensor_msgs::Imu imu_msg;
-	imu_msg.header.stamp.sec=0;
-	imu_msg.header.stamp.nsec=0;
-	imu_msg.header.frame_id='0';
-	imu_msg.orientation.x=0.0;
-	imu_msg.orientation.y=0.0;
-	imu_msg.orientation.z=0.0;
-	imu_msg.orientation.w=0.0;
-	imu_msg.orientation_covariance={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-	imu_msg.angular_velocity.x=0.0;
-	imu_msg.angular_velocity.y=0.0;
-	imu_msg.angular_velocity.z=0.0;
-	imu_msg.angular_velocity_covariance={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // fixed
-	imu_msg.linear_acceleration.x=0.0;
-	imu_msg.linear_acceleration.y=0.0;
-	imu_msg.linear_acceleration.z=0.0;
-	imu_msg.linear_acceleration_covariance={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}; // fixed
+  sensor_msgs::TimeReference time_ref;
+  time_ref.header.frame_id = "imu_base";
 
-	diagnostic_msgs::DiagnosticStatus system_status_msg;
-	system_status_msg.level = 0; // default OK state
-	system_status_msg.name = "System Status";
-	system_status_msg.message = "";
+  tf::TransformBroadcaster tf_broadcaster;
+  tf::StampedTransform tf_msg;
+  tf_msg.frame_id_ = "imu_base";
+  tf_msg.child_frame_id_ = "imu";
 
-	diagnostic_msgs::DiagnosticStatus filter_status_msg;
-	filter_status_msg.level = 0; // default OK state
-	filter_status_msg.name = "Filter Status";
-	filter_status_msg.message = "";
+  diagnostic_msgs::DiagnosticStatus system_status_msg;
+  system_status_msg.level = 0; // default OK state
+  system_status_msg.name = "System Status";
+  system_status_msg.message = "";
 
-	// get data from com port //
-	an_decoder_t an_decoder;
-	an_packet_t *an_packet;
-	system_state_packet_t system_state_packet;
-	quaternion_orientation_standard_deviation_packet_t quaternion_orientation_standard_deviation_packet;
-	int bytes_received;
+  diagnostic_msgs::DiagnosticStatus filter_status_msg;
+  filter_status_msg.level = 0; // default OK state
+  filter_status_msg.name = "Filter Status";
+  filter_status_msg.message = "";
 
-	if (OpenComport(const_cast<char*>(com_port.c_str()), baud_rate))
-	{
-		printf("Could not open serial port: %s \n",com_port.c_str());
-		exit(EXIT_FAILURE);
-	}
+  // get data from com port //
+  an_decoder_t an_decoder;
+  an_packet_t *an_packet;
+  system_state_packet_t system_state_packet;
+  euler_orientation_standard_deviation_packet_t euler_orientation_standard_deviation_packet;
+  running_time_packet_t time_packet;
+  int bytes_received;
 
-	an_decoder_initialise(&an_decoder);
+  if (OpenComport(const_cast<char*>(com_port.c_str()), baud_rate)) {
+    printf("Could not open serial port: %s \n", com_port.c_str());
+    exit(EXIT_FAILURE);
+  }
 
-	// Loop continuously, polling for packets
-	while (ros::ok())
-	{
-		ros::spinOnce();
-		if ((bytes_received = PollComport(an_decoder_pointer(&an_decoder), an_decoder_size(&an_decoder))) > 0)
-		{
-			// increment the decode buffer length by the number of bytes received //
-			an_decoder_increment(&an_decoder, bytes_received);
+  an_decoder_initialise(&an_decoder);
 
-			// decode all the packets in the buffer //
-			while ((an_packet = an_packet_decode(&an_decoder)) != NULL)
-			{
-				// system state packet //
-				if (an_packet->id == packet_id_system_state)
-				{
-					if(decode_system_state_packet(&system_state_packet, an_packet) == 0)
-					{
-						// NavSatFix
-						nav_sat_fix_msg.header.stamp.sec=system_state_packet.unix_time_seconds;
-						nav_sat_fix_msg.header.stamp.nsec=system_state_packet.microseconds*1000;
-						nav_sat_fix_msg.header.frame_id=nav_sat_frame_id;
-						if ((system_state_packet.filter_status.b.gnss_fix_type == 1) ||
-							(system_state_packet.filter_status.b.gnss_fix_type == 2))
-						{
-							nav_sat_fix_msg.status.status=0;
-						}
-						else if ((system_state_packet.filter_status.b.gnss_fix_type == 3) ||
-							 (system_state_packet.filter_status.b.gnss_fix_type == 5))
-						{
-							nav_sat_fix_msg.status.status=1;
-						}
-						else if ((system_state_packet.filter_status.b.gnss_fix_type == 4) ||
-							 (system_state_packet.filter_status.b.gnss_fix_type == 6) ||
-							 (system_state_packet.filter_status.b.gnss_fix_type == 7))
-						{
-							nav_sat_fix_msg.status.status=2;
-						}
-						else
-						{
-							nav_sat_fix_msg.status.status=-1;
-						}
-						nav_sat_fix_msg.latitude=system_state_packet.latitude * RADIANS_TO_DEGREES;
-						nav_sat_fix_msg.longitude=system_state_packet.longitude * RADIANS_TO_DEGREES;
-						nav_sat_fix_msg.altitude=system_state_packet.height;
-						nav_sat_fix_msg.position_covariance={pow(system_state_packet.standard_deviation[1],2), 0.0, 0.0,
-							0.0, pow(system_state_packet.standard_deviation[0],2), 0.0,
-							0.0, 0.0, pow(system_state_packet.standard_deviation[2],2)};
+  if(!output_filename.empty()) {
+    generator.openFile(output_filename);
+    ROS_INFO_STREAM("OUTPUT_FILE: " << output_filename);
+  }
 
-						// Twist
-						twist_msg.linear.x=system_state_packet.velocity[0];
-						twist_msg.linear.y=system_state_packet.velocity[1];
-						twist_msg.linear.z=system_state_packet.velocity[2];
-						twist_msg.angular.x=system_state_packet.angular_velocity[0];
-						twist_msg.angular.y=system_state_packet.angular_velocity[1];
-						twist_msg.angular.z=system_state_packet.angular_velocity[2];
+  // Loop continuously, polling for packets
+  while (ros::ok()) {
+    ros::spinOnce();
+    if ((bytes_received = PollComport(an_decoder_pointer(&an_decoder), an_decoder_size(&an_decoder))) > 0) {
+      // increment the decode buffer length by the number of bytes received //
+      an_decoder_increment(&an_decoder, bytes_received);
 
-						// IMU
-						imu_msg.header.stamp.sec=system_state_packet.unix_time_seconds;
-						imu_msg.header.stamp.nsec=system_state_packet.microseconds*1000;
-						imu_msg.header.frame_id=imu_frame_id;
-						// Convert roll, pitch, yaw from radians to quaternion format //
-						float phi = system_state_packet.orientation[0] / 2.0f;
-						float theta = system_state_packet.orientation[1] / 2.0f;
-						float psi = system_state_packet.orientation[2] / 2.0f;
-						float sin_phi = sinf(phi);
-						float cos_phi = cosf(phi);
-						float sin_theta = sinf(theta);
-						float cos_theta = cosf(theta);
-						float sin_psi = sinf(psi);
-						float cos_psi = cosf(psi);
-						imu_msg.orientation.x=-cos_phi * sin_theta * sin_psi + sin_phi * cos_theta * cos_psi;
-						imu_msg.orientation.y=cos_phi * sin_theta * cos_psi + sin_phi * cos_theta * sin_psi;
-						imu_msg.orientation.z=cos_phi * cos_theta * sin_psi - sin_phi * sin_theta * cos_psi;
-						imu_msg.orientation.w=cos_phi * cos_theta * cos_psi + sin_phi * sin_theta * sin_psi;
+      // decode all the packets in the buffer //
+      while ((an_packet = an_packet_decode(&an_decoder)) != NULL) {
 
-						imu_msg.angular_velocity.x=system_state_packet.angular_velocity[0]; // These the same as the TWIST msg values
-						imu_msg.angular_velocity.y=system_state_packet.angular_velocity[1];
-						imu_msg.angular_velocity.z=system_state_packet.angular_velocity[2];
-						imu_msg.linear_acceleration.x=system_state_packet.body_acceleration[0];
-						imu_msg.linear_acceleration.y=system_state_packet.body_acceleration[1];
-						imu_msg.linear_acceleration.z=system_state_packet.body_acceleration[2];
+        ros::Time ros_now = ros::Time::now();
+        //cerr << "Packet came, ID: " << (int)an_packet->id << endl;
 
-						// System Status
-						system_status_msg.message = "";
-						system_status_msg.level = 0; // default OK state
-						if (system_state_packet.system_status.b.system_failure) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "0. System Failure! ";
-						}
-						if (system_state_packet.system_status.b.accelerometer_sensor_failure) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "1. Accelerometer Sensor Failure! ";
-						}
-						if (system_state_packet.system_status.b.gyroscope_sensor_failure) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "2. Gyroscope Sensor Failure! ";
-						}
-						if (system_state_packet.system_status.b.magnetometer_sensor_failure) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "3. Magnetometer Sensor Failure! ";
-						}
-						if (system_state_packet.system_status.b.pressure_sensor_failure) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "4. Pressure Sensor Failure! ";
-						}
-						if (system_state_packet.system_status.b.gnss_failure) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "5. GNSS Failure! ";
-						}
-						if (system_state_packet.system_status.b.accelerometer_over_range) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "6. Accelerometer Over Range! ";
-						}
-						if (system_state_packet.system_status.b.gyroscope_over_range) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "7. Gyroscope Over Range! ";
-						}
-						if (system_state_packet.system_status.b.magnetometer_over_range) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "8. Magnetometer Over Range! ";
-						}
-						if (system_state_packet.system_status.b.pressure_over_range) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "9. Pressure Over Range! ";
-						}
-						if (system_state_packet.system_status.b.minimum_temperature_alarm) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "10. Minimum Temperature Alarm! ";
-						}
-						if (system_state_packet.system_status.b.maximum_temperature_alarm) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "11. Maximum Temperature Alarm! ";
-						}
-						if (system_state_packet.system_status.b.low_voltage_alarm) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "12. Low Voltage Alarm! ";
-						}
-						if (system_state_packet.system_status.b.high_voltage_alarm) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "13. High Voltage Alarm! ";
-						}
-						if (system_state_packet.system_status.b.gnss_antenna_disconnected) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "14. GNSS Antenna Disconnected! ";
-						}
-						if (system_state_packet.system_status.b.serial_port_overflow_alarm) {
-							system_status_msg.level = 2; // ERROR state
-							system_status_msg.message = system_status_msg.message + "15. Data Output Overflow Alarm! ";
-						}
+        // system state packet //
+        if (an_packet->id == packet_id_system_state) {
+          if (decode_system_state_packet(&system_state_packet, an_packet) == 0) {
+            // System status
+            load_system_status(system_state_packet, system_status_msg);
+            system_status_pub.publish(system_status_msg);
 
-						// Filter Status
-						filter_status_msg.message = "";
-						filter_status_msg.level = 0; // default OK state
-						if (system_state_packet.filter_status.b.orientation_filter_initialised) {
-							filter_status_msg.message = filter_status_msg.message + "0. Orientation Filter Initialised. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "0. Orientation Filter NOT Initialised. ";
-						}
-						if (system_state_packet.filter_status.b.ins_filter_initialised) {
-							filter_status_msg.message = filter_status_msg.message + "1. Navigation Filter Initialised. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "1. Navigation Filter NOT Initialised. ";
-						}
-						if (system_state_packet.filter_status.b.heading_initialised) {
-							filter_status_msg.message = filter_status_msg.message + "2. Heading Initialised. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "2. Heading NOT Initialised. ";
-						}
-						if (system_state_packet.filter_status.b.utc_time_initialised) {
-							filter_status_msg.message = filter_status_msg.message + "3. UTC Time Initialised. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "3. UTC Time NOT Initialised. ";
-						}
-						if (system_state_packet.filter_status.b.event1_flag) {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "7. Event 1 Occured. ";
-						}
-						else {
-							filter_status_msg.message = filter_status_msg.message + "7. Event 1 NOT Occured. ";
-						}
-						if (system_state_packet.filter_status.b.event2_flag) {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "8. Event 2 Occured. ";
-						}
-						else {
-							filter_status_msg.message = filter_status_msg.message + "8. Event 2 NOT Occured. ";
-						}
-						if (system_state_packet.filter_status.b.internal_gnss_enabled) {
-							filter_status_msg.message = filter_status_msg.message + "9. Internal GNSS Enabled. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "9. Internal GNSS NOT Enabled. ";
-						}
-						if (system_state_packet.filter_status.b.magnetic_heading_enabled) {
-							filter_status_msg.message = filter_status_msg.message + "10. Magnetic Heading Active. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "10. Magnetic Heading NOT Active. ";
-						}
-						if (system_state_packet.filter_status.b.velocity_heading_enabled) {
-							filter_status_msg.message = filter_status_msg.message + "11. Velocity Heading Enabled. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "11. Velocity Heading NOT Enabled. ";
-						}
-						if (system_state_packet.filter_status.b.atmospheric_altitude_enabled) {
-							filter_status_msg.message = filter_status_msg.message + "12. Atmospheric Altitude Enabled. ";
-						}
-						else {
-							filter_status_msg.message = filter_status_msg.message + "12. Atmospheric Altitude NOT Enabled. ";
-							filter_status_msg.level = 1; // WARN state
-						}
-						if (system_state_packet.filter_status.b.external_position_active) {
-							filter_status_msg.message = filter_status_msg.message + "13. External Position Active. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "13. External Position NOT Active. ";
-						}
-						if (system_state_packet.filter_status.b.external_velocity_active) {
-							filter_status_msg.message = filter_status_msg.message + "14. External Velocity Active. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "14. External Velocity NOT Active. ";
-						}
-						if (system_state_packet.filter_status.b.external_heading_active) {
-							filter_status_msg.message = filter_status_msg.message + "15. External Heading Active. ";
-						}
-						else {
-							filter_status_msg.level = 1; // WARN state
-							filter_status_msg.message = filter_status_msg.message + "15. External Heading NOT Active. ";
-						}
-					}
-				}
+            // Filter status
+            load_filter_status(system_state_packet, filter_status_msg);
+            filter_status_pub.publish(filter_status_msg);
 
-				// quaternion orientation standard deviation packet //
-				if (an_packet->id == packet_id_quaternion_orientation_standard_deviation)
-				{
-					// copy all the binary data into the typedef struct for the packet //
-					// this allows easy access to all the different values             //
-					if(decode_quaternion_orientation_standard_deviation_packet(&quaternion_orientation_standard_deviation_packet, an_packet) == 0)
-					{
-						// IMU
-						imu_msg.orientation_covariance[0] = quaternion_orientation_standard_deviation_packet.standard_deviation[0];
-						imu_msg.orientation_covariance[4] = quaternion_orientation_standard_deviation_packet.standard_deviation[1];
-						imu_msg.orientation_covariance[8] = quaternion_orientation_standard_deviation_packet.standard_deviation[2];
-					}
-				}
-				// Ensure that you free the an_packet when your done with it //
-				// or you will leak memory                                   //
-				an_packet_free(&an_packet);
+            // IMU
+            orientation_msg.header.stamp = ros_now;
+            load_orientation(system_state_packet.orientation, orientation_msg.pose.orientation, should_discard_heading);
+            orientation_pub.publish(orientation_msg);
 
-				// Publish messages //
-				nav_sat_fix_pub.publish(nav_sat_fix_msg);
-				twist_pub.publish(twist_msg);
-				imu_pub.publish(imu_msg);
-				system_status_pub.publish(system_status_msg);
-				filter_status_pub.publish(filter_status_msg);
-			}
-		}
-	}
+            tf_msg.stamp_ = ros_now;
+            tf_msg.setOrigin(tf::Vector3(
+                orientation_msg.pose.position.x, orientation_msg.pose.position.y, orientation_msg.pose.position.z));
+            tf_msg.setRotation(tf::Quaternion(
+                orientation_msg.pose.orientation.x, orientation_msg.pose.orientation.y, orientation_msg.pose.orientation.z,
+                orientation_msg.pose.orientation.w));
+            tf_broadcaster.sendTransform(tf_msg);
+
+            // SpatialDual publish NEMEA timestamps within current hour to Velodyne
+            float hourTimestamp = system_state_packet.unix_time_seconds % 3600 + system_state_packet.microseconds*1e-6;
+            float timestamp = fixHourOverflow(hourTimestamp);
+            time_ref.header.stamp = ros_now;
+            time_ref.time_ref = ros::Time(timestamp);
+            timeref_pub.publish(time_ref);
+
+            generator.genDict(timestamp, orientation_msg.pose.orientation, orientation_errors_msg.vector);
+          }
+        }
+
+        if (an_packet->id == packet_id_euler_orientation_standard_deviation) {
+          if (decode_euler_orientation_standard_deviation_packet(&euler_orientation_standard_deviation_packet, an_packet) == 0) {
+            // IMU error
+            orientation_errors_msg.header.stamp = ros_now;
+            orientation_errors_msg.vector.x = euler_orientation_standard_deviation_packet.standard_deviation[0];
+            orientation_errors_msg.vector.y = euler_orientation_standard_deviation_packet.standard_deviation[1];
+            orientation_errors_msg.vector.z = euler_orientation_standard_deviation_packet.standard_deviation[2];
+            orientation_err_pub.publish(orientation_errors_msg);
+
+            publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold);
+          }
+        }
+
+        an_packet_free(&an_packet);
+      }
+    }
+  }
 
 }
 
