@@ -330,11 +330,34 @@ float fixHourOverflow(const float hourTimestamp) {
   static float last_timestamp = -1.0;
   if(last_timestamp > hourTimestamp) {
     hours++;
+    ROS_INFO_STREAM("Hour overflow, hours: " << hours);
   }
   last_timestamp = hourTimestamp;
   return last_timestamp + 60*60*hours;
 }
 
+
+class ANPPLogger {
+
+public:
+  bool open(const string &filename) {
+    logFile.open(filename.c_str(), ios::out | ios::binary);
+    return logFile.is_open();
+  }
+
+  bool write(const an_packet_t &packet) {
+    if(!logFile.is_open()) {
+      return false;
+    }
+    logFile.write((char*)&packet.header, sizeof(uint8_t) * AN_PACKET_HEADER_SIZE);
+    logFile.write((char*)&packet.data, packet.length * sizeof(uint8_t));
+    return true;
+  }
+
+private:
+  ofstream logFile;
+
+} anpp_logger;
 
 int main(int argc, char *argv[]) {
   // Set up ROS node //
@@ -349,13 +372,14 @@ int main(int argc, char *argv[]) {
   std::string com_port;
   int baud_rate;
   float std_deviation_threshold;
-  std::string output_filename;
+  std::string output_filename, output_binary_log;
   bool should_discard_heading;
 
   pnh.param<std::string>("uart_port", com_port, "/dev/ttyUSB0");
   pnh.param<int>("uart_baud_rate", baud_rate, 115200);
   pnh.param<float>("std_deviation_threshold", std_deviation_threshold, 0.6);
   pnh.param<std::string>("output_file", output_filename, "");
+  pnh.param<std::string>("output_binary_log", output_binary_log, "");
   pnh.param<bool>("discard_heading", should_discard_heading, true);
 
   // Initialise Publishers and Topics //
@@ -409,6 +433,11 @@ int main(int argc, char *argv[]) {
   if(!output_filename.empty()) {
     generator.openFile(output_filename);
     ROS_INFO_STREAM("OUTPUT_FILE: " << output_filename);
+  }
+
+  if(!output_binary_log.empty()) {
+    anpp_logger.open(output_binary_log);
+    ROS_INFO_STREAM("Binary log saved to: " << output_binary_log);
   }
 
   // Loop continuously, polling for packets
@@ -471,6 +500,8 @@ int main(int argc, char *argv[]) {
             publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold);
           }
         }
+
+        anpp_logger.write(*an_packet);
 
         an_packet_free(&an_packet);
       }
