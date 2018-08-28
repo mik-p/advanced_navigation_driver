@@ -27,6 +27,7 @@
  */
 
 #include <ros/ros.h>
+#include <std_msgs/Float32.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -53,7 +54,10 @@
 
 using namespace std;
 
-#define RADIANS_TO_DEGREES (180.0/M_PI)
+const float RADIANS_TO_DEGREES = 180.0/M_PI;
+const float DEGREES_TO_RADIANS = M_PI/180.0;
+
+const float EXTERNAL_HEADING_STD_DEV = 0.1 * DEGREES_TO_RADIANS;
 
 void load_system_status(const system_state_packet_t &system_state_packet,
     diagnostic_msgs::DiagnosticStatus &system_status_msg) {
@@ -359,6 +363,16 @@ private:
 
 } anpp_logger;
 
+void heading_subscriber(const std_msgs::Float32::ConstPtr &heading_msg) {
+  external_heading_packet_t external_heading_packet;
+  external_heading_packet.heading = heading_msg->data;
+  external_heading_packet.standard_deviation = EXTERNAL_HEADING_STD_DEV;
+  an_packet_t *raw_packet = encode_external_heading_packet(&external_heading_packet);
+  an_packet_encode(raw_packet);
+  SendBuf(an_packet_pointer(raw_packet), an_packet_size(raw_packet));
+  an_packet_free(&raw_packet);
+}
+
 int main(int argc, char *argv[]) {
   // Set up ROS node //
   ros::init(argc, argv, "an_device_node", ros::init_options::NoSigintHandler);
@@ -390,6 +404,8 @@ int main(int argc, char *argv[]) {
   ros::Publisher filter_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_filter_status", 10);
   image_transport::ImageTransport it(nh);
   image_transport::Publisher display_pub = it.advertise("info_display", 10);
+
+  ros::Subscriber external_heading_sub = nh.subscribe("external_heading", 10, heading_subscriber);
 
   geometry_msgs::PoseStamped orientation_msg;
   orientation_msg.header.frame_id = "imu_base";
