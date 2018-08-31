@@ -2,9 +2,10 @@
   <arg name="output_file" default="" />
   <arg name="output_binary_log" default="" />
   <arg name="uart_port" default="/dev/ttyUSB0" />
+  <arg name="uart_baud_rate" default="1000000" />
   <node name="advanced_navigation_driver" pkg="advanced_navigation_driver" type="advanced_navigation_driver" output="screen">
     <param name="uart_port" value="$(arg uart_port)" />
-    <param name="uart_baud_rate" value="115200" type="int" />
+    <param name="uart_baud_rate" value="$(arg uart_baud_rate)" type="int" />
     <param name="output_file" value="$(arg output_file)" type="string" />
     <param name="output_binary_log" value="$(arg output_binary_log)" type="string" />
   </node>
