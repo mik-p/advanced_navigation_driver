@@ -45,3 +45,13 @@ void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::
 
   display_pub.publish(msg);
 }
+
+void publish_info_panel_failure(image_transport::Publisher &display_pub) {
+  cv::Mat panel(HEIGHT, WIDTH, CV_8UC3, cv::Scalar(255,255,255,255));
+
+  cv::putText(panel, "IMU failure!", cv::Point2f(30, 100), cv::FONT_HERSHEY_PLAIN, 4, cv::Scalar(0,0,255,255), 6);
+
+  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", panel).toImageMsg();
+
+  display_pub.publish(msg);
+}

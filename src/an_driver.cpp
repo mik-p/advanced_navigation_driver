@@ -284,6 +284,8 @@ void load_orientation(const float *rpy, geometry_msgs::Quaternion &orientation, 
 
 void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, float std_deviation_threshold);
 
+void publish_info_panel_failure(image_transport::Publisher &display_pub);
+
 class JsonGenerator {
 public:
   JsonGenerator(void) : isOpened(false), isFirst(true) {
@@ -363,14 +365,23 @@ private:
 
 } anpp_logger;
 
+void send_and_free_packet(an_packet_t *packet) {
+  an_packet_encode(packet);
+  SendBuf(an_packet_pointer(packet), an_packet_size(packet));
+  an_packet_free(&packet);
+}
+
 void heading_subscriber(const std_msgs::Float32::ConstPtr &heading_msg) {
   external_heading_packet_t external_heading_packet;
   external_heading_packet.heading = heading_msg->data;
   external_heading_packet.standard_deviation = EXTERNAL_HEADING_STD_DEV;
   an_packet_t *raw_packet = encode_external_heading_packet(&external_heading_packet);
-  an_packet_encode(raw_packet);
-  SendBuf(an_packet_pointer(raw_packet), an_packet_size(raw_packet));
-  an_packet_free(&raw_packet);
+  send_and_free_packet(raw_packet);
+}
+
+void request_packet(packet_id_e packet_id) {
+  an_packet_t *an_packet = encode_request_packet(packet_id);
+  send_and_free_packet(an_packet);
 }
 
 int main(int argc, char *argv[]) {
@@ -390,7 +401,7 @@ int main(int argc, char *argv[]) {
   bool should_discard_heading;
 
   pnh.param<std::string>("uart_port", com_port, "/dev/ttyUSB0");
-  pnh.param<int>("uart_baud_rate", baud_rate, 115200);
+  pnh.param<int>("uart_baud_rate", baud_rate, 1000000);
   pnh.param<float>("std_deviation_threshold", std_deviation_threshold, 0.6);
   pnh.param<std::string>("output_file", output_filename, "");
   pnh.param<std::string>("output_binary_log", output_binary_log, "");
@@ -443,6 +454,7 @@ int main(int argc, char *argv[]) {
     printf("Could not open serial port: %s \n", com_port.c_str());
     exit(EXIT_FAILURE);
   }
+  ROS_INFO_STREAM("Serial port successfully opened");
 
   an_decoder_initialise(&an_decoder);
 
@@ -450,11 +462,17 @@ int main(int argc, char *argv[]) {
     generator.openFile(output_filename);
     ROS_INFO_STREAM("OUTPUT_FILE: " << output_filename);
   }
+  ROS_INFO_STREAM("Output JSON file successfully opened");
 
   if(!output_binary_log.empty()) {
     anpp_logger.open(output_binary_log);
     ROS_INFO_STREAM("Binary log saved to: " << output_binary_log);
   }
+  ROS_INFO_STREAM("Output ANPP log file successfully opened");
+
+  bool imu_filter_failure = false;
+  bool dual_antena_package_received = false;
+  bool alignment_package_received = false;
 
   // Loop continuously, polling for packets
   while (ros::ok()) {
@@ -480,7 +498,18 @@ int main(int argc, char *argv[]) {
             load_filter_status(system_state_packet, filter_status_msg);
             filter_status_pub.publish(filter_status_msg);
 
+            // SpatialDual publish NEMEA timestamps within current hour to Velodyne
+            float hourTimestamp = system_state_packet.unix_time_seconds % 3600 + system_state_packet.microseconds*1e-6;
+            float timestamp = fixHourOverflow(hourTimestamp);
+            time_ref.header.stamp = ros_now;
+            time_ref.time_ref = ros::Time(timestamp);
+            timeref_pub.publish(time_ref);
+
             // IMU
+            if(system_state_packet.filter_status.b.orientation_filter_initialised == 0) {
+              imu_filter_failure = true;
+            }
+
             orientation_msg.header.stamp = ros_now;
             load_orientation(system_state_packet.orientation, orientation_msg.pose.orientation, should_discard_heading);
             orientation_pub.publish(orientation_msg);
@@ -493,14 +522,14 @@ int main(int argc, char *argv[]) {
                 orientation_msg.pose.orientation.w));
             tf_broadcaster.sendTransform(tf_msg);
 
-            // SpatialDual publish NEMEA timestamps within current hour to Velodyne
-            float hourTimestamp = system_state_packet.unix_time_seconds % 3600 + system_state_packet.microseconds*1e-6;
-            float timestamp = fixHourOverflow(hourTimestamp);
-            time_ref.header.stamp = ros_now;
-            time_ref.time_ref = ros::Time(timestamp);
-            timeref_pub.publish(time_ref);
-
             generator.genDict(timestamp, orientation_msg.pose.orientation, orientation_errors_msg.vector);
+
+            if(!alignment_package_received) {
+              request_packet(packet_id_installation_alignment);
+            }
+            if(!dual_antena_package_received) {
+              request_packet(packet_id_dual_antenna_configuration);
+            }
           }
         }
 
@@ -513,9 +542,16 @@ int main(int argc, char *argv[]) {
             orientation_errors_msg.vector.z = euler_orientation_standard_deviation_packet.standard_deviation[2];
             orientation_err_pub.publish(orientation_errors_msg);
 
-            publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold);
+            if(imu_filter_failure) {
+              publish_info_panel_failure(display_pub);
+            } else {
+              publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold);
+            }
           }
         }
+
+        dual_antena_package_received |= (an_packet->id == packet_id_dual_antenna_configuration);
+        alignment_package_received |= (an_packet->id == packet_id_installation_alignment);
 
         anpp_logger.write(*an_packet);
 
