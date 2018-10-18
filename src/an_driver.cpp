@@ -34,6 +34,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "rs232/rs232.h"
 #include "an_packet_protocol.h"
@@ -57,9 +58,13 @@ int main(int argc, char *argv[]) {
 	
 	printf("\nYour Advanced Navigation ROS driver is currently running\nPress Ctrl-C to interrupt\n");
 
+	// Array for message received
+	int anPacketReceived[1000] = {0};
+
 	// Set up the COM port
 	std::string com_port;
 	int baud_rate;
+	int debug = 0;
 	std::string imu_frame_id;
 	std::string nav_sat_frame_id;
 	std::string topic_prefix;
@@ -73,6 +78,7 @@ int main(int argc, char *argv[]) {
 	else {
 		pnh.param("port", com_port, std::string("/dev/ttyUSB0"));
 		pnh.param("baud_rate", baud_rate, 115200);
+		pnh.param("debug", debug, 0);
 	}
 
 	pnh.param("imu_frame_id", imu_frame_id, std::string("imu"));
@@ -167,6 +173,10 @@ int main(int argc, char *argv[]) {
 			// decode all the packets in the buffer //
 			while ((an_packet = an_packet_decode(&an_decoder)) != NULL)
 			{
+				//mark that we have received a certain packet
+				if (an_packet->id<1000)
+					anPacketReceived[an_packet->id] += 1;
+
 				// system state packet //
 				if (an_packet->id == packet_id_system_state)
 				{
@@ -184,18 +194,18 @@ int main(int argc, char *argv[]) {
 						nav_sat_fix_msg.header.stamp.nsec=system_state_packet.microseconds*1000;
 						nav_sat_fix_msg.header.frame_id=nav_sat_frame_id;
 						if ((system_state_packet.filter_status.b.gnss_fix_type == 1) ||
-							(system_state_packet.filter_status.b.gnss_fix_type == 2))
+							  (system_state_packet.filter_status.b.gnss_fix_type == 2))
 						{
 							nav_sat_fix_msg.status.status=0;
 						}
 						else if ((system_state_packet.filter_status.b.gnss_fix_type == 3) ||
-							 (system_state_packet.filter_status.b.gnss_fix_type == 5))
+							       (system_state_packet.filter_status.b.gnss_fix_type == 5))
 						{
 							nav_sat_fix_msg.status.status=1;
 						}
 						else if ((system_state_packet.filter_status.b.gnss_fix_type == 4) ||
-							 (system_state_packet.filter_status.b.gnss_fix_type == 6) ||
-							 (system_state_packet.filter_status.b.gnss_fix_type == 7))
+							       (system_state_packet.filter_status.b.gnss_fix_type == 6) ||
+							       (system_state_packet.filter_status.b.gnss_fix_type == 7))
 						{
 							nav_sat_fix_msg.status.status=2;
 						}
@@ -413,7 +423,7 @@ int main(int argc, char *argv[]) {
 				{
 					// copy all the binary data into the typedef struct for the packet //
 					// this allows easy access to all the different values             //
-					if(decode_quaternion_orientation_standard_deviation_packet(&quaternion_orientation_standard_deviation_packet, an_packet) == 0)
+					if (decode_quaternion_orientation_standard_deviation_packet(&quaternion_orientation_standard_deviation_packet, an_packet) == 0)
 					{
 						// IMU
 						imu_msg.orientation_covariance[0] = quaternion_orientation_standard_deviation_packet.standard_deviation[0];
@@ -427,7 +437,7 @@ int main(int argc, char *argv[]) {
 				{
 					// copy all the binary data into the typedef struct for the packet //
 					// this allows easy access to all the different values			 //
-					if(decode_raw_sensors_packet(&raw_sensors_packet, an_packet) == 0)
+					if (decode_raw_sensors_packet(&raw_sensors_packet, an_packet) == 0)
 					{
 						// IMU
 						imu_msg.angular_velocity.x = raw_sensors_packet.gyroscopes[0];
@@ -443,9 +453,23 @@ int main(int argc, char *argv[]) {
 				// or you will leak memory                                   //
 				an_packet_free(&an_packet);
 
+				if (debug)
+					fprintf(stderr, "%d %d %d\n", anPacketReceived[packet_id_system_state], 
+						anPacketReceived[packet_id_quaternion_orientation_standard_deviation],
+						anPacketReceived[packet_id_raw_sensors]);
+
+				// check that we have at least one of each required packages
+				if (!anPacketReceived[packet_id_system_state] ||
+				    !anPacketReceived[packet_id_quaternion_orientation_standard_deviation] ||
+				    (!anPacketReceived[packet_id_raw_sensors] || remove_gravity))
+					continue;
+
+				memset(anPacketReceived, 0, sizeof(anPacketReceived));
+
 				// Make sure packages are only published if the time stamp actually differs //
 				long long ros_msec = ros_time.toNSec()/1000;
-				if(ros_msec <= ros_last) continue;
+				if (ros_msec <= ros_last) continue;
+				if (debug) fprintf(stderr, "send at %g\n", 1e6f/(ros_msec-ros_last));
 				ros_last = ros_msec;
 
 				// Publish messages //
