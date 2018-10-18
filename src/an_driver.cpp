@@ -1,9 +1,9 @@
 /****************************************************************/
-/*                                                              */
-/*          Advanced Navigation Packet Protocol Library         */
-/*        ROS Driver, Packet to Published Message Example       */
-/*          Copyright 2017, Advanced Navigation Pty Ltd         */
-/*                                                              */
+/*															  */
+/*		  Advanced Navigation Packet Protocol Library		 */
+/*		ROS Driver, Packet to Published Message Example	   */
+/*		  Copyright 2017, Advanced Navigation Pty Ltd		 */
+/*															  */
 /****************************************************************/
 /*
  *
@@ -63,8 +63,8 @@ int main(int argc, char *argv[]) {
 	std::string imu_frame_id;
 	std::string nav_sat_frame_id;
 	std::string topic_prefix;
-    bool device_time, remove_gravity;
-    tf::Quaternion orientation;
+	bool device_time, remove_gravity;
+	tf::Quaternion orientation;
 
 	if (argc >= 3) {
 		com_port = std::string(argv[1]);
@@ -78,8 +78,8 @@ int main(int argc, char *argv[]) {
 	pnh.param("imu_frame_id", imu_frame_id, std::string("imu"));
 	pnh.param("nav_sat_frame_id", nav_sat_frame_id, std::string("gps"));
 	pnh.param("topic_prefix", topic_prefix, std::string("an_device"));
-    pnh.param("device_time", device_time, false);
-    pnh.param("remove_gravity", remove_gravity, false);
+	pnh.param("device_time", device_time, false);
+	pnh.param("remove_gravity", remove_gravity, false);
 
 	// Initialise Publishers and Topics //
 	ros::Publisher nav_sat_fix_pub=nh.advertise<sensor_msgs::NavSatFix>(topic_prefix + "/NavSatFix",10);
@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
 	an_packet_t *an_packet;
 	system_state_packet_t system_state_packet;
 	quaternion_orientation_standard_deviation_packet_t quaternion_orientation_standard_deviation_packet;
-    raw_sensors_packet_t raw_sensors_packet;
+	raw_sensors_packet_t raw_sensors_packet;
 	int bytes_received;
 
 	if (OpenComport(const_cast<char*>(com_port.c_str()), baud_rate))
@@ -152,8 +152,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	an_decoder_initialise(&an_decoder);
-    long long ros_last = ros::Time::now().toNSec()/1000;
-    ros::Time ros_time = ros::Time::now();
+	long long ros_last = ros::Time::now().toNSec()/1000;
+	ros::Time ros_time = ros::Time::now();
 
 	// Loop continuously, polling for packets
 	while (ros::ok())
@@ -172,13 +172,13 @@ int main(int argc, char *argv[]) {
 				{
 					if(decode_system_state_packet(&system_state_packet, an_packet) == 0)
 					{
-                        ros_time = ros::Time::now();
-                        if(!device_time)
-                        {
-                            system_state_packet.unix_time_seconds = ros_time.sec;
-                            system_state_packet.microseconds      = ros_time.nsec/1000;
-                        }
-                        
+						ros_time = ros::Time::now();
+						if(!device_time)
+						{
+							system_state_packet.unix_time_seconds = ros_time.sec;
+							system_state_packet.microseconds	  = ros_time.nsec/1000;
+						}
+						
 						// NavSatFix
 						nav_sat_fix_msg.header.stamp.sec=system_state_packet.unix_time_seconds;
 						nav_sat_fix_msg.header.stamp.nsec=system_state_packet.microseconds*1000;
@@ -233,15 +233,15 @@ int main(int argc, char *argv[]) {
 						imu_msg.orientation.z = orientation[2];
 						imu_msg.orientation.w = orientation[3];
 
-                        if(remove_gravity)
-                        {
-    						imu_msg.angular_velocity.x=system_state_packet.angular_velocity[0]; // These the same as the TWIST msg values
-	    					imu_msg.angular_velocity.y=system_state_packet.angular_velocity[1];
-	    					imu_msg.angular_velocity.z=system_state_packet.angular_velocity[2];
-	    					imu_msg.linear_acceleration.x=system_state_packet.body_acceleration[0];
-	    					imu_msg.linear_acceleration.y=system_state_packet.body_acceleration[1];
-	    					imu_msg.linear_acceleration.z=system_state_packet.body_acceleration[2];
-                        }
+						if(remove_gravity)
+						{
+							imu_msg.angular_velocity.x=system_state_packet.angular_velocity[0]; // These the same as the TWIST msg values
+							imu_msg.angular_velocity.y=system_state_packet.angular_velocity[1];
+							imu_msg.angular_velocity.z=system_state_packet.angular_velocity[2];
+							imu_msg.linear_acceleration.x=system_state_packet.body_acceleration[0];
+							imu_msg.linear_acceleration.y=system_state_packet.body_acceleration[1];
+							imu_msg.linear_acceleration.z=system_state_packet.body_acceleration[2];
+						}
 
 						// System Status
 						system_status_msg.message = "";
@@ -426,17 +426,16 @@ int main(int argc, char *argv[]) {
 				if (!remove_gravity && an_packet->id == packet_id_raw_sensors)
 				{
 					// copy all the binary data into the typedef struct for the packet //
-					// this allows easy access to all the different values             //
+					// this allows easy access to all the different values			 //
 					if(decode_raw_sensors_packet(&raw_sensors_packet, an_packet) == 0)
 					{
 						// IMU
-                        imu_msg.angular_velocity.x = raw_sensors_packet.gyroscopes[0];
-                        imu_msg.angular_velocity.y = raw_sensors_packet.gyroscopes[1];
-                        imu_msg.angular_velocity.z = raw_sensors_packet.gyroscopes[2];
+						imu_msg.angular_velocity.x = raw_sensors_packet.gyroscopes[0];
+						imu_msg.angular_velocity.y = raw_sensors_packet.gyroscopes[1];
+						imu_msg.angular_velocity.z = raw_sensors_packet.gyroscopes[2];
 						imu_msg.linear_acceleration.x = raw_sensors_packet.accelerometers[0];
 						imu_msg.linear_acceleration.y = raw_sensors_packet.accelerometers[1];
 						imu_msg.linear_acceleration.z = raw_sensors_packet.accelerometers[2];
-                        
 					}
 				}
 
@@ -444,10 +443,10 @@ int main(int argc, char *argv[]) {
 				// or you will leak memory                                   //
 				an_packet_free(&an_packet);
 
-                // Make sure packages are only published if the time stamp actually differs //
-                long long ros_msec = ros_time.toNSec()/1000;
-                if(ros_msec <= ros_last) continue;
-                ros_last = ros_msec;
+				// Make sure packages are only published if the time stamp actually differs //
+				long long ros_msec = ros_time.toNSec()/1000;
+				if(ros_msec <= ros_last) continue;
+				ros_last = ros_msec;
 
 				// Publish messages //
 				nav_sat_fix_pub.publish(nav_sat_fix_msg);
