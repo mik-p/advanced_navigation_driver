@@ -133,6 +133,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(advanced_navigation_driver src/an_driver.cpp src/spatial_packets.c src/an_packet_protocol.c src/rs232/rs232.c)
+add_executable(an_change_baudrate src/an_change_baudrate.cpp src/spatial_packets.c src/an_packet_protocol.c src/rs232/rs232.c)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -146,6 +147,9 @@ add_executable(advanced_navigation_driver src/an_driver.cpp src/spatial_packets.
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(advanced_navigation_driver
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(an_change_baudrate
   ${catkin_LIBRARIES}
 )
 
@@ -170,6 +174,12 @@ install(TARGETS ${PROJECT_NAME} advanced_navigation_driver
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+install(TARGETS an_change_baudrate an_change_baudrate
+#   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 
 ## Mark cpp header files for installation
 # install(DIRECTORY include/${PROJECT_NAME}/

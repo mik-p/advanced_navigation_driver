@@ -59,12 +59,13 @@ int main(int argc, char *argv[]) {
 	printf("\nYour Advanced Navigation ROS driver is currently running\nPress Ctrl-C to interrupt\n");
 
 	// Array for message received
-	int anPacketReceived[1000] = {0};
+	int packets_received[1000] = {0};
 
 	// Set up the COM port
 	std::string com_port;
 	int baud_rate;
-	int debug = 0;
+	int rate;
+	int debug;
 	std::string imu_frame_id;
 	std::string nav_sat_frame_id;
 	std::string topic_prefix;
@@ -78,6 +79,7 @@ int main(int argc, char *argv[]) {
 	else {
 		pnh.param("port", com_port, std::string("/dev/ttyUSB0"));
 		pnh.param("baud_rate", baud_rate, 115200);
+		pnh.param("rate", rate, 100);
 		pnh.param("debug", debug, 0);
 	}
 
@@ -157,6 +159,32 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
+	// set packet data rate //
+	packet_timer_period_packet_t timer_packet = {0};
+	timer_packet.permanent = TRUE;
+	timer_packet.utc_synchronisation = TRUE;
+	timer_packet.packet_timer_period = 1;
+	an_packet = encode_packet_timer_period_packet(&timer_packet);
+	an_packet_encode(an_packet);
+	SendBuf(an_packet_pointer(an_packet), an_packet_size(an_packet));
+	an_packet_free(&an_packet);
+
+	packet_periods_packet_t period_packet = {0};
+	int period = 1.e3/rate;
+	period_packet.permanent = TRUE;
+	period_packet.clear_existing_packets = TRUE;
+	period_packet.packet_periods[0].packet_id = 20;
+	period_packet.packet_periods[0].period = period;
+	period_packet.packet_periods[1].packet_id = 27;
+	period_packet.packet_periods[1].period = period;
+	period_packet.packet_periods[2].packet_id = 28;
+	period_packet.packet_periods[2].period = period;
+
+	an_packet = encode_packet_periods_packet(&period_packet);
+	an_packet_encode(an_packet);
+	SendBuf(an_packet_pointer(an_packet), an_packet_size(an_packet));
+	an_packet_free(&an_packet);
+
 	an_decoder_initialise(&an_decoder);
 	long long ros_last = ros::Time::now().toNSec()/1000;
 	ros::Time ros_time = ros::Time::now();
@@ -175,7 +203,7 @@ int main(int argc, char *argv[]) {
 			{
 				//mark that we have received a certain packet
 				if (an_packet->id<1000)
-					anPacketReceived[an_packet->id] += 1;
+					packets_received[an_packet->id] += 1;
 
 				// system state packet //
 				if (an_packet->id == packet_id_system_state)
@@ -186,7 +214,7 @@ int main(int argc, char *argv[]) {
 						if(!device_time)
 						{
 							system_state_packet.unix_time_seconds = ros_time.sec;
-							system_state_packet.microseconds	  = ros_time.nsec/1000;
+							system_state_packet.microseconds      = ros_time.nsec/1000;
 						}
 						
 						// NavSatFix
@@ -194,18 +222,18 @@ int main(int argc, char *argv[]) {
 						nav_sat_fix_msg.header.stamp.nsec=system_state_packet.microseconds*1000;
 						nav_sat_fix_msg.header.frame_id=nav_sat_frame_id;
 						if ((system_state_packet.filter_status.b.gnss_fix_type == 1) ||
-							  (system_state_packet.filter_status.b.gnss_fix_type == 2))
+						    (system_state_packet.filter_status.b.gnss_fix_type == 2))
 						{
 							nav_sat_fix_msg.status.status=0;
 						}
 						else if ((system_state_packet.filter_status.b.gnss_fix_type == 3) ||
-							       (system_state_packet.filter_status.b.gnss_fix_type == 5))
+						         (system_state_packet.filter_status.b.gnss_fix_type == 5))
 						{
 							nav_sat_fix_msg.status.status=1;
 						}
 						else if ((system_state_packet.filter_status.b.gnss_fix_type == 4) ||
-							       (system_state_packet.filter_status.b.gnss_fix_type == 6) ||
-							       (system_state_packet.filter_status.b.gnss_fix_type == 7))
+						         (system_state_packet.filter_status.b.gnss_fix_type == 6) ||
+						         (system_state_packet.filter_status.b.gnss_fix_type == 7))
 						{
 							nav_sat_fix_msg.status.status=2;
 						}
@@ -454,17 +482,17 @@ int main(int argc, char *argv[]) {
 				an_packet_free(&an_packet);
 
 				if (debug)
-					fprintf(stderr, "%d %d %d\n", anPacketReceived[packet_id_system_state], 
-						anPacketReceived[packet_id_quaternion_orientation_standard_deviation],
-						anPacketReceived[packet_id_raw_sensors]);
+					fprintf(stderr, "%d %d %d\n", packets_received[packet_id_system_state], 
+						packets_received[packet_id_quaternion_orientation_standard_deviation],
+						packets_received[packet_id_raw_sensors]);
 
 				// check that we have at least one of each required packages
-				if (!anPacketReceived[packet_id_system_state] ||
-				    !anPacketReceived[packet_id_quaternion_orientation_standard_deviation] ||
-				    (!anPacketReceived[packet_id_raw_sensors] || remove_gravity))
+				if (!packets_received[packet_id_system_state] ||
+				    !packets_received[packet_id_quaternion_orientation_standard_deviation] ||
+				    (!packets_received[packet_id_raw_sensors] || remove_gravity))
 					continue;
 
-				memset(anPacketReceived, 0, sizeof(anPacketReceived));
+				memset(packets_received, 0, sizeof(packets_received));
 
 				// Make sure packages are only published if the time stamp actually differs //
 				long long ros_msec = ros_time.toNSec()/1000;
