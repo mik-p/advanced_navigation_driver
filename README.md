@@ -37,3 +37,4 @@ When multiple packets are set to output at the same rate, the order the packets 
 # Settings
 
 * At this point the driver requires packets 20, 27 and 28. These packets are reconfigured automatically by the driver. Any previous configuration is lost.
+* Antenna offset can be configured, and is set to zero by default (previous configuration will get lost when the driver is run). The units are meters and it is in the spatial coordinate frame (see spatial housing).

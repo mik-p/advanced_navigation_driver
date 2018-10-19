@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
 	int baud_rate;
 	int rate;
 	int debug;
+	double antenna_offset[3] = {0};
 	std::string imu_frame_id;
 	std::string nav_sat_frame_id;
 	std::string topic_prefix;
@@ -79,10 +80,13 @@ int main(int argc, char *argv[]) {
 	else {
 		pnh.param("port", com_port, std::string("/dev/ttyUSB0"));
 		pnh.param("baud_rate", baud_rate, 115200);
-		pnh.param("rate", rate, 100);
-		pnh.param("debug", debug, 0);
 	}
 
+	pnh.param("antenna_offset_x", antenna_offset[0], 0.0);
+	pnh.param("antenna_offset_y", antenna_offset[1], 0.0);
+	pnh.param("antenna_offset_z", antenna_offset[2], 0.0);
+	pnh.param("rate", rate, 100);
+	pnh.param("debug", debug, 0);
 	pnh.param("imu_frame_id", imu_frame_id, std::string("imu"));
 	pnh.param("nav_sat_frame_id", nav_sat_frame_id, std::string("gps"));
 	pnh.param("topic_prefix", topic_prefix, std::string("an_device"));
@@ -173,18 +177,32 @@ int main(int argc, char *argv[]) {
 	int period = 1.e3/rate;
 	period_packet.permanent = TRUE;
 	period_packet.clear_existing_packets = TRUE;
-	period_packet.packet_periods[0].packet_id = 20;
+	period_packet.packet_periods[0].packet_id = packet_id_system_state;
 	period_packet.packet_periods[0].period = period;
-	period_packet.packet_periods[1].packet_id = 27;
+	period_packet.packet_periods[1].packet_id = packet_id_raw_sensors;
 	period_packet.packet_periods[1].period = period;
-	period_packet.packet_periods[2].packet_id = 28;
+	period_packet.packet_periods[2].packet_id = packet_id_quaternion_orientation_standard_deviation;
 	period_packet.packet_periods[2].period = period;
-
 	an_packet = encode_packet_periods_packet(&period_packet);
 	an_packet_encode(an_packet);
 	SendBuf(an_packet_pointer(an_packet), an_packet_size(an_packet));
 	an_packet_free(&an_packet);
 
+	// set antenna offset (not currently working)//
+	installation_alignment_packet_t installation_alignment = {0};
+	installation_alignment.permanent = TRUE;
+	installation_alignment.alignment_dcm[0][0] = 1.0;
+	installation_alignment.alignment_dcm[1][1] = 1.0;
+	installation_alignment.alignment_dcm[2][2] = 1.0;
+	installation_alignment.gnss_antenna_offset[0] = antenna_offset[0];
+	installation_alignment.gnss_antenna_offset[1] = antenna_offset[1];
+	installation_alignment.gnss_antenna_offset[2] = antenna_offset[2];
+	an_packet = encode_installation_alignment_packet(&installation_alignment);
+	an_packet_encode(an_packet);
+	SendBuf(an_packet_pointer(an_packet), an_packet_size(an_packet));
+	an_packet_free(&an_packet);
+
+	// some more parameters that are needed //
 	an_decoder_initialise(&an_decoder);
 	long long ros_last = ros::Time::now().toNSec()/1000;
 	ros::Time ros_time = ros::Time::now();
