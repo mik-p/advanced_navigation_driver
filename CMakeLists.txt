@@ -189,11 +189,12 @@ install(TARGETS an_change_baudrate an_change_baudrate
 # )
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
-# install(FILES
+install(FILES
+   launch/an.launch
 #   # myfile1
 #   # myfile2
-#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-# )
+   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+)
 
 #############
 ## Testing ##
