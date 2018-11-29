@@ -282,7 +282,8 @@ void load_orientation(const float *rpy, geometry_msgs::Quaternion &orientation, 
   cerr << ZYX_q.x() << " " << ZYX_q.y() << " " << ZYX_q.z() << " " << ZYX_q.w() << endl;*/
 }
 
-void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, float std_deviation_threshold);
+void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, float std_deviation_threshold,
+    const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active);
 
 void publish_info_panel_failure(image_transport::Publisher &display_pub);
 
@@ -474,6 +475,8 @@ int main(int argc, char *argv[]) {
   bool dual_antena_package_received = false;
   bool alignment_package_received = false;
 
+  int last_gnss_fix_type, last_heading_initialized, last_dual_antena_active;
+
   // Loop continuously, polling for packets
   while (ros::ok()) {
     ros::spinOnce();
@@ -530,6 +533,16 @@ int main(int argc, char *argv[]) {
             if(!dual_antena_package_received) {
               request_packet(packet_id_dual_antenna_configuration);
             }
+
+            last_gnss_fix_type = system_state_packet.filter_status.b.gnss_fix_type;
+            last_heading_initialized = system_state_packet.filter_status.b.heading_initialised;
+          }
+        }
+
+        if(an_packet->id == packet_id_status) {
+          status_packet_t status_packet;
+          if (decode_status_packet(&status_packet, an_packet) == 0) {
+            last_dual_antena_active = status_packet.filter_status.b.dual_antenna_heading_active;
           }
         }
 
@@ -545,7 +558,8 @@ int main(int argc, char *argv[]) {
             if(imu_filter_failure) {
               publish_info_panel_failure(display_pub);
             } else {
-              publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold);
+              publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold,
+                  last_gnss_fix_type, last_heading_initialized, last_dual_antena_active);
             }
           }
         }
