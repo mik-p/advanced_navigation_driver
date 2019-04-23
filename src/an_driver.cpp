@@ -282,8 +282,9 @@ void load_orientation(const float *rpy, geometry_msgs::Quaternion &orientation, 
   cerr << ZYX_q.x() << " " << ZYX_q.y() << " " << ZYX_q.z() << " " << ZYX_q.w() << endl;*/
 }
 
-void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, float std_deviation_threshold,
-    const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active);
+void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, const float std_deviation_threshold,
+    const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
+    const size_t satelites, const float hdop, const float vdop);
 
 void publish_info_panel_failure(image_transport::Publisher &display_pub);
 
@@ -474,6 +475,9 @@ int main(int argc, char *argv[]) {
   bool imu_filter_failure = false;
   bool dual_antena_package_received = false;
   bool alignment_package_received = false;
+  size_t satelites_cnt = 0;
+  float hdop = -1.0;
+  float vdop = -1.0;
 
   int last_gnss_fix_type, last_heading_initialized, last_dual_antena_active;
 
@@ -546,6 +550,16 @@ int main(int argc, char *argv[]) {
           }
         }
 
+        if(an_packet->id == packet_id_satellites) {
+          satellites_packet_t satellites_packet;
+          if (decode_satellites_packet(&satellites_packet, an_packet) == 0) {
+            satelites_cnt = satellites_packet.gps_satellites + satellites_packet.glonass_satellites +
+                satellites_packet.beidou_satellites + satellites_packet.galileo_satellites + satellites_packet.sbas_satellites;
+            hdop = satellites_packet.hdop;
+            vdop = satellites_packet.vdop;
+          }
+        }
+
         if (an_packet->id == packet_id_euler_orientation_standard_deviation) {
           if (decode_euler_orientation_standard_deviation_packet(&euler_orientation_standard_deviation_packet, an_packet) == 0) {
             // IMU error
@@ -559,7 +573,8 @@ int main(int argc, char *argv[]) {
               publish_info_panel_failure(display_pub);
             } else {
               publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold,
-                  last_gnss_fix_type, last_heading_initialized, last_dual_antena_active);
+                  last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
+                  satelites_cnt, hdop, vdop);
             }
           }
         }

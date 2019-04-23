@@ -15,6 +15,7 @@ const float HEIGHT = 480;
 
 const cv::Scalar RED(0, 0, 255, 255);
 const cv::Scalar GREEN(0, 255, 0, 255);
+const cv::Scalar BLUE(255, 0, 0, 255);
 
 string flag_to_string(const int flag) {
   if(flag == 0) {
@@ -85,7 +86,8 @@ cv::Scalar err_to_rgb(const float error, const float max_error) {
 }
 
 void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg,
-    float std_deviation_threshold, const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active) {
+    const float std_deviation_threshold, const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
+    const size_t satelites, const float hdop, const float vdop) {
   cv::Mat panel(HEIGHT, WIDTH, CV_8UC3, cv::Scalar(255,255,255,255));
 
   float roll_error = deg(pose_errors_msg.vector.x);
@@ -109,14 +111,29 @@ void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::
   cv::putText(panel, "Pitch std. dev [deg]:", cv::Point2f(30, space_top+space_lines+space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, err_to_rgb(pitch_error, max_err), font_thickness);
   cv::putText(panel, pitch_text.str(), cv::Point2f(30, space_top+2*space_lines+space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, err_to_rgb(pitch_error, max_err), font_thickness);
 
-  cv::putText(panel, "Fix:", cv::Point2f(30, space_top+2*space_lines+2*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, gnss_fix_to_color(gnss_fix_type), font_thickness);
-  cv::putText(panel, gnss_fix_to_string(gnss_fix_type), cv::Point2f(30, space_top+3*space_lines+2*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, gnss_fix_to_color(gnss_fix_type), font_thickness);
+  stringstream fix_text;
+  fix_text << "Fix: " << gnss_fix_to_string(gnss_fix_type);
+  cv::putText(panel, fix_text.str(), cv::Point2f(30, space_top+2*space_lines+2*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, gnss_fix_to_color(gnss_fix_type), font_thickness);
 
-  cv::putText(panel, "Heading set:", cv::Point2f(30, space_top+3*space_lines+3*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, flag_to_color(heading_initialised), font_thickness);
-  cv::putText(panel, flag_to_string(heading_initialised), cv::Point2f(30, space_top+4*space_lines+3*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, flag_to_color(heading_initialised), font_thickness);
+  stringstream heading_text;
+  heading_text << "Heading set: " << flag_to_string(heading_initialised);
+  cv::putText(panel, heading_text.str(), cv::Point2f(30, space_top+3*space_lines+2*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, flag_to_color(heading_initialised), font_thickness);
 
-  cv::putText(panel, "Dual antenna active:", cv::Point2f(30, space_top+4*space_lines+4*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, flag_to_color(dual_antenna_heading_active), font_thickness);
-  cv::putText(panel, flag_to_string(dual_antenna_heading_active), cv::Point2f(30, space_top+5*space_lines+4*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, flag_to_color(dual_antenna_heading_active), font_thickness);
+  stringstream antenna_text;
+  antenna_text << "Dual antenna active: " << flag_to_string(dual_antenna_heading_active);
+  cv::putText(panel, antenna_text.str(), cv::Point2f(30, space_top+4*space_lines+2*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, flag_to_color(dual_antenna_heading_active), font_thickness);
+
+  stringstream satelites_text;
+  satelites_text << "Satelites: " << satelites;
+  cv::putText(panel, satelites_text.str(), cv::Point2f(30, space_top+4*space_lines+3*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, BLUE, font_thickness);
+
+  stringstream hdop_text;
+  hdop_text << "HDOP: " << hdop;
+  cv::putText(panel, hdop_text.str(), cv::Point2f(30, space_top+5*space_lines+3*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, BLUE, font_thickness);
+
+  stringstream vdop_text;
+  vdop_text << "VDOP: " << vdop;
+  cv::putText(panel, vdop_text.str() , cv::Point2f(30, space_top+6*space_lines+3*space_stats), cv::FONT_HERSHEY_PLAIN, font_scale, BLUE, font_thickness);
 
   sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", panel).toImageMsg();
 
