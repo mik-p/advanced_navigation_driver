@@ -307,7 +307,8 @@ public:
         file << ", " << endl;
       }
       isFirst = false;
-      file << "{ \"type\":\"quat_data\", \"timeStamp\":" << timeStamp << ", ";
+      file << std::fixed << "{ \"type\":\"quat_data\", \"timeStamp\":" << std::setprecision(3) << timeStamp << ", ";
+      file << std::setprecision(8);
       file << "\"quaternion\":[" << quaternion.x << ", " << quaternion.y << ", " << quaternion.z << ", " << quaternion.w << "], ";
       file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "] }";
     }
