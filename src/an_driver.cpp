@@ -301,7 +301,8 @@ public:
 
   void genDict(const float timeStamp,
       const geometry_msgs::Quaternion &quaternion,
-      const geometry_msgs::Vector3 eulerStdDev) {
+      const geometry_msgs::Vector3 eulerStdDev,
+      const geometry_msgs::Vector3 angularSpeed) {
     if(isOpened) {
       if(!isFirst) {
         file << ", " << endl;
@@ -310,7 +311,8 @@ public:
       file << std::fixed << "{ \"type\":\"quat_data\", \"timeStamp\":" << std::setprecision(3) << timeStamp << ", ";
       file << std::setprecision(8);
       file << "\"quaternion\":[" << quaternion.x << ", " << quaternion.y << ", " << quaternion.z << ", " << quaternion.w << "], ";
-      file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "] }";
+      file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "], ";
+      file << "\"angularSpeed\":[" << angularSpeed.x << ", " << angularSpeed.y << ", " << angularSpeed.z << "] }";
     }
   }
 
@@ -530,7 +532,12 @@ int main(int argc, char *argv[]) {
                 orientation_msg.pose.orientation.w));
             tf_broadcaster.sendTransform(tf_msg);
 
-            generator.genDict(timestamp, orientation_msg.pose.orientation, orientation_errors_msg.vector);
+            geometry_msgs::Vector3 angular_velocity;
+            angular_velocity.x = system_state_packet.angular_velocity[0];
+            angular_velocity.y = system_state_packet.angular_velocity[1];
+            angular_velocity.z = system_state_packet.angular_velocity[2];
+
+            generator.genDict(timestamp, orientation_msg.pose.orientation, orientation_errors_msg.vector, angular_velocity);
 
             if(!alignment_package_received) {
               request_packet(packet_id_installation_alignment);
