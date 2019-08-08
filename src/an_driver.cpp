@@ -312,7 +312,7 @@ public:
       file << std::setprecision(8);
       file << "\"quaternion\":[" << quaternion.x << ", " << quaternion.y << ", " << quaternion.z << ", " << quaternion.w << "], ";
       file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "], ";
-      file << "\"angularSpeed\":[" << angularSpeed.x << ", " << angularSpeed.y << ", " << angularSpeed.z << "] }";
+      file << "\"angularSpeed\":[" << angularSpeed.x << ", " << angularSpeed.y << ", " << angularSpeed.z << "] }" << flush;
     }
   }
 
