@@ -301,6 +301,7 @@ public:
 
   void genDict(const float timeStamp,
       const geometry_msgs::Quaternion &quaternion,
+      const geometry_msgs::Quaternion &quaternion_full,
       const geometry_msgs::Vector3 eulerStdDev,
       const geometry_msgs::Vector3 angularSpeed) {
     if(isOpened) {
@@ -311,6 +312,7 @@ public:
       file << std::fixed << "{ \"type\":\"quat_data\", \"timeStamp\":" << std::setprecision(3) << timeStamp << ", ";
       file << std::setprecision(8);
       file << "\"quaternion\":[" << quaternion.x << ", " << quaternion.y << ", " << quaternion.z << ", " << quaternion.w << "], ";
+      file << "\"quaternion_full\":[" << quaternion_full.x << ", " << quaternion_full.y << ", " << quaternion_full.z << ", " << quaternion_full.w << "], ";
       file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "], ";
       file << "\"angularSpeed\":[" << angularSpeed.x << ", " << angularSpeed.y << ", " << angularSpeed.z << "] }" << flush;
     }
@@ -423,8 +425,9 @@ int main(int argc, char *argv[]) {
 
   ros::Subscriber external_heading_sub = nh.subscribe("external_heading", 10, heading_subscriber);
 
-  geometry_msgs::PoseStamped orientation_msg;
+  geometry_msgs::PoseStamped orientation_msg, orientation_msg_with_heading;
   orientation_msg.header.frame_id = "imu_base";
+  orientation_msg_with_heading.header.frame_id = "imu_base";
 
   geometry_msgs::Vector3Stamped orientation_errors_msg;
   orientation_errors_msg.header.frame_id = "imu_base";
@@ -522,14 +525,17 @@ int main(int argc, char *argv[]) {
 
             orientation_msg.header.stamp = ros_now;
             load_orientation(system_state_packet.orientation, orientation_msg.pose.orientation, should_discard_heading);
-            orientation_pub.publish(orientation_msg);
+
+            orientation_msg_with_heading.header.stamp = ros_now;
+            load_orientation(system_state_packet.orientation, orientation_msg_with_heading.pose.orientation, false);
+            orientation_pub.publish(orientation_msg_with_heading);
 
             tf_msg.stamp_ = ros_now;
             tf_msg.setOrigin(tf::Vector3(
                 orientation_msg.pose.position.x, orientation_msg.pose.position.y, orientation_msg.pose.position.z));
             tf_msg.setRotation(tf::Quaternion(
-                orientation_msg.pose.orientation.x, orientation_msg.pose.orientation.y, orientation_msg.pose.orientation.z,
-                orientation_msg.pose.orientation.w));
+                orientation_msg_with_heading.pose.orientation.x, orientation_msg_with_heading.pose.orientation.y,
+                orientation_msg_with_heading.pose.orientation.z, orientation_msg_with_heading.pose.orientation.w));
             tf_broadcaster.sendTransform(tf_msg);
 
             geometry_msgs::Vector3 angular_velocity;
@@ -537,7 +543,8 @@ int main(int argc, char *argv[]) {
             angular_velocity.y = system_state_packet.angular_velocity[1];
             angular_velocity.z = system_state_packet.angular_velocity[2];
 
-            generator.genDict(timestamp, orientation_msg.pose.orientation, orientation_errors_msg.vector, angular_velocity);
+            generator.genDict(timestamp, orientation_msg.pose.orientation, orientation_msg_with_heading.pose.orientation,
+                orientation_errors_msg.vector, angular_velocity);
 
             if(!alignment_package_received) {
               request_packet(packet_id_installation_alignment);
