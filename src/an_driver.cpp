@@ -52,6 +52,8 @@
 
 #include <eigen3/Eigen/Eigen>
 
+#include "advanced_navigation_driver/InfoPanelData.h"
+
 using namespace std;
 
 const float RADIANS_TO_DEGREES = 180.0/M_PI;
@@ -286,6 +288,10 @@ void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::
     const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
     const size_t satelites, const float hdop, const float vdop);
 
+void publish_info_panel(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg, const float std_deviation_threshold,
+    const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
+    const size_t satelites, const float hdop, const float vdop);
+
 void publish_info_panel_failure(image_transport::Publisher &display_pub);
 
 class JsonGenerator {
@@ -420,6 +426,7 @@ int main(int argc, char *argv[]) {
   ros::Publisher timeref_pub = nh.advertise<sensor_msgs::TimeReference>("imu_timeref", 10);
   ros::Publisher system_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_status", 10);
   ros::Publisher filter_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_filter_status", 10);
+  ros::Publisher data_pub = nh.advertise<advanced_navigation_driver::InfoPanelData>("info_panel_data", 10);
   image_transport::ImageTransport it(nh);
   image_transport::Publisher display_pub = it.advertise("info_display", 10);
 
@@ -588,6 +595,9 @@ int main(int argc, char *argv[]) {
               publish_info_panel_failure(display_pub);
             } else {
               publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold,
+                  last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
+                  satelites_cnt, hdop, vdop);
+              publish_info_panel(data_pub, orientation_errors_msg, std_deviation_threshold,
                   last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
                   satelites_cnt, hdop, vdop);
             }

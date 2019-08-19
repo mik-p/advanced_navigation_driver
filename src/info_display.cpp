@@ -8,6 +8,8 @@
 #include <opencv/cv.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "advanced_navigation_driver/InfoPanelData.h"
+
 using namespace std;
 
 const float WIDTH = 640;
@@ -83,6 +85,27 @@ float deg(const float rad) {
 cv::Scalar err_to_rgb(const float error, const float max_error) {
   float rel_error = MIN(error, max_error) / max_error;
   return cv::Scalar(0, 255*(1-rel_error), 255*rel_error, 255);
+}
+
+void publish_info_panel(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg,
+    const float std_deviation_threshold, const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
+    const size_t satelites, const float hdop, const float vdop) {
+
+  advanced_navigation_driver::InfoPanelData msg;
+
+  msg.roll_error = deg(pose_errors_msg.vector.x);
+  msg.pitch_error = deg(pose_errors_msg.vector.y);
+  msg.max_error = 3.0 * std_deviation_threshold;
+
+  msg.fix_type = gnss_fix_type;
+  msg.heading = heading_initialised;
+  msg.antena = dual_antenna_heading_active;
+
+  msg.satelites = satelites;
+  msg.hdop = hdop;
+  msg.vdop = hdop;
+
+  pub.publish(msg);
 }
 
 void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg,
