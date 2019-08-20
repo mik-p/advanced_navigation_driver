@@ -208,4 +208,5 @@ include_directories(EIGEN3_INCLUDE_DIR)
 ## Advanced Navigation ##
 #########################
 add_executable(advanced_navigation_driver src/an_driver.cpp src/spatial_packets.c src/an_packet_protocol.c src/rs232/rs232.c src/info_display.cpp)
+add_dependencies(advanced_navigation_driver ${catkin_EXPORTED_TARGETS})
 target_link_libraries(advanced_navigation_driver ${catkin_LIBRARIES})
