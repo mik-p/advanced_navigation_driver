@@ -9,6 +9,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "advanced_navigation_driver/InfoPanelData.h"
+#include "advanced_navigation_driver/InfoPanelError.h"
 
 using namespace std;
 
@@ -171,4 +172,10 @@ void publish_info_panel_failure(image_transport::Publisher &display_pub) {
   sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", panel).toImageMsg();
 
   display_pub.publish(msg);
+}
+
+void publish_info_panel_failure(const ros::Publisher &pub) {
+  advanced_navigation_driver::InfoPanelError msg;
+  msg.error = "IMU failure occoured.";
+  pub.publish(msg);
 }

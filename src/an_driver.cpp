@@ -294,6 +294,8 @@ void publish_info_panel(const ros::Publisher &pub, geometry_msgs::Vector3Stamped
 
 void publish_info_panel_failure(image_transport::Publisher &display_pub);
 
+void publish_info_panel_failure(const ros::Publisher &pub);
+
 class JsonGenerator {
 public:
   JsonGenerator(void) : isOpened(false), isFirst(true) {
