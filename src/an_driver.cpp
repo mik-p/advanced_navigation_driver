@@ -53,6 +53,7 @@
 #include <eigen3/Eigen/Eigen>
 
 #include "advanced_navigation_driver/InfoPanelData.h"
+#include "advanced_navigation_driver/InfoPanelError.h"
 
 using namespace std;
 
@@ -429,6 +430,7 @@ int main(int argc, char *argv[]) {
   ros::Publisher system_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_status", 10);
   ros::Publisher filter_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_filter_status", 10);
   ros::Publisher data_pub = nh.advertise<advanced_navigation_driver::InfoPanelData>("info_panel_data", 10);
+  ros::Publisher fail_pub = nh.advertise<advanced_navigation_driver::InfoPanelError>("info_panel_error", 10);
   image_transport::ImageTransport it(nh);
   image_transport::Publisher display_pub = it.advertise("info_display", 10);
 
@@ -595,6 +597,7 @@ int main(int argc, char *argv[]) {
 
             if(imu_filter_failure) {
               publish_info_panel_failure(display_pub);
+              publish_info_panel_failure(fail_pub);
             } else {
               publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold,
                   last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
