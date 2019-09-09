@@ -1,7 +1,6 @@
 Header header
 float32 roll_error
 float32 pitch_error
-float32 max_error
 int32 fix_type
 int32 heading
 int32 antena

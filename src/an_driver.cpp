@@ -289,7 +289,7 @@ void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::
     const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
     const size_t satelites, const float hdop, const float vdop);
 
-void publish_info_panel(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg, const float std_deviation_threshold,
+void publish_info_panel(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg,
     const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
     const size_t satelites, const float hdop, const float vdop);
 
@@ -602,7 +602,7 @@ int main(int argc, char *argv[]) {
               publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold,
                   last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
                   satelites_cnt, hdop, vdop);
-              publish_info_panel(data_pub, orientation_errors_msg, std_deviation_threshold,
+              publish_info_panel(data_pub, orientation_errors_msg,
                   last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
                   satelites_cnt, hdop, vdop);
             }
