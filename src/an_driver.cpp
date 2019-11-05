@@ -400,6 +400,12 @@ void request_packet(packet_id_e packet_id) {
   send_and_free_packet(an_packet);
 }
 
+std_msgs::Float32 norm(const float velocity[]) {
+  std_msgs::Float32 msg;
+  msg.data = sqrt(velocity[0]*velocity[0] + velocity[1]*velocity[1] + velocity[2]*velocity[2]);
+  return msg;
+}
+
 int main(int argc, char *argv[]) {
   // Set up ROS node //
   ros::init(argc, argv, "an_device_node", ros::init_options::NoSigintHandler);
@@ -431,6 +437,7 @@ int main(int argc, char *argv[]) {
   ros::Publisher filter_status_pub = nh.advertise<diagnostic_msgs::DiagnosticStatus>("imu_filter_status", 10);
   ros::Publisher data_pub = nh.advertise<advanced_navigation_driver::InfoPanelData>("info_panel_data", 10);
   ros::Publisher fail_pub = nh.advertise<advanced_navigation_driver::InfoPanelError>("info_panel_error", 10);
+  ros::Publisher speed_pub = nh.advertise<std_msgs::Float32>("speed", 10);
   image_transport::ImageTransport it(nh);
   image_transport::Publisher display_pub = it.advertise("info_display", 10);
 
@@ -566,6 +573,8 @@ int main(int argc, char *argv[]) {
 
             last_gnss_fix_type = system_state_packet.filter_status.b.gnss_fix_type;
             last_heading_initialized = system_state_packet.filter_status.b.heading_initialised;
+
+            speed_pub.publish(norm(system_state_packet.velocity));
           }
         }
 
