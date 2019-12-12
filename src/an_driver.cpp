@@ -57,11 +57,6 @@
 
 using namespace std;
 
-const float RADIANS_TO_DEGREES = 180.0/M_PI;
-const float DEGREES_TO_RADIANS = M_PI/180.0;
-
-const float EXTERNAL_HEADING_STD_DEV = 0.1 * DEGREES_TO_RADIANS;
-
 void load_system_status(const system_state_packet_t &system_state_packet,
     diagnostic_msgs::DiagnosticStatus &system_status_msg) {
   system_status_msg.message = "";
@@ -285,17 +280,35 @@ void load_orientation(const float *rpy, geometry_msgs::Quaternion &orientation, 
   cerr << ZYX_q.x() << " " << ZYX_q.y() << " " << ZYX_q.z() << " " << ZYX_q.w() << endl;*/
 }
 
-void publish_info_panel(image_transport::Publisher &display_pub, geometry_msgs::Vector3Stamped pose_errors_msg, const float std_deviation_threshold,
-    const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
-    const size_t satelites, const float hdop, const float vdop);
+float deg(const float rad) {
+  return rad * 180.0 / M_PI;
+}
 
-void publish_info_panel(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg,
-    const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
-    const size_t satelites, const float hdop, const float vdop);
+void publish_info_data(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg,
+                       const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
+                       const size_t satelites, const float hdop, const float vdop) {
 
-void publish_info_panel_failure(image_transport::Publisher &display_pub);
+  advanced_navigation_driver::InfoPanelData msg;
 
-void publish_info_panel_failure(const ros::Publisher &pub);
+  msg.roll_error = deg(pose_errors_msg.vector.x);
+  msg.pitch_error = deg(pose_errors_msg.vector.y);
+
+  msg.fix_type = gnss_fix_type;
+  msg.heading = heading_initialised;
+  msg.antena = dual_antenna_heading_active;
+
+  msg.satelites = satelites;
+  msg.hdop = hdop;
+  msg.vdop = hdop;
+
+  pub.publish(msg);
+}
+
+void publish_info_data_failure(const ros::Publisher &pub) {
+  advanced_navigation_driver::InfoPanelError msg;
+  msg.error = "IMU failure occoured.";
+  pub.publish(msg);
+}
 
 class JsonGenerator {
 public:
@@ -387,14 +400,6 @@ void send_and_free_packet(an_packet_t *packet) {
   an_packet_free(&packet);
 }
 
-void heading_subscriber(const std_msgs::Float32::ConstPtr &heading_msg) {
-  external_heading_packet_t external_heading_packet;
-  external_heading_packet.heading = heading_msg->data;
-  external_heading_packet.standard_deviation = EXTERNAL_HEADING_STD_DEV;
-  an_packet_t *raw_packet = encode_external_heading_packet(&external_heading_packet);
-  send_and_free_packet(raw_packet);
-}
-
 void request_packet(packet_id_e packet_id) {
   an_packet_t *an_packet = encode_request_packet(packet_id);
   send_and_free_packet(an_packet);
@@ -424,7 +429,6 @@ int main(int argc, char *argv[]) {
 
   pnh.param<std::string>("uart_port", com_port, "/dev/ttyUSB0");
   pnh.param<int>("uart_baud_rate", baud_rate, 1000000);
-  pnh.param<float>("std_deviation_threshold", std_deviation_threshold, 0.6);
   pnh.param<std::string>("output_file", output_filename, "");
   pnh.param<std::string>("output_binary_log", output_binary_log, "");
   pnh.param<bool>("discard_heading", should_discard_heading, true);
@@ -438,10 +442,6 @@ int main(int argc, char *argv[]) {
   ros::Publisher data_pub = nh.advertise<advanced_navigation_driver::InfoPanelData>("info_panel_data", 10);
   ros::Publisher fail_pub = nh.advertise<advanced_navigation_driver::InfoPanelError>("info_panel_error", 10);
   ros::Publisher speed_pub = nh.advertise<std_msgs::Float32>("speed", 10);
-  image_transport::ImageTransport it(nh);
-  image_transport::Publisher display_pub = it.advertise("info_display", 10);
-
-  ros::Subscriber external_heading_sub = nh.subscribe("external_heading", 10, heading_subscriber);
 
   geometry_msgs::PoseStamped orientation_msg, orientation_msg_with_heading;
   orientation_msg.header.frame_id = "imu_base";
@@ -605,13 +605,9 @@ int main(int argc, char *argv[]) {
             orientation_err_pub.publish(orientation_errors_msg);
 
             if(imu_filter_failure) {
-              publish_info_panel_failure(display_pub);
-              publish_info_panel_failure(fail_pub);
+              publish_info_data_failure(fail_pub);
             } else {
-              publish_info_panel(display_pub, orientation_errors_msg, std_deviation_threshold,
-                  last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
-                  satelites_cnt, hdop, vdop);
-              publish_info_panel(data_pub, orientation_errors_msg,
+              publish_info_data(data_pub, orientation_errors_msg,
                   last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
                   satelites_cnt, hdop, vdop);
             }
