@@ -286,7 +286,8 @@ float deg(const float rad) {
 
 void publish_info_data(const ros::Publisher &pub, geometry_msgs::Vector3Stamped pose_errors_msg,
                        const int gnss_fix_type, const int heading_initialised, const int dual_antenna_heading_active,
-                       const size_t satelites, const float hdop, const float vdop) {
+                       const size_t satelites, const float hdop, const float vdop, const int odometer_active,
+                       const float odometer_speed) {
 
   advanced_navigation_driver::InfoPanelData msg;
 
@@ -299,7 +300,10 @@ void publish_info_data(const ros::Publisher &pub, geometry_msgs::Vector3Stamped 
 
   msg.satelites = satelites;
   msg.hdop = hdop;
-  msg.vdop = hdop;
+  msg.vdop = vdop;
+
+  msg.odometer_active = odometer_active;
+  msg.odometer_speed = odometer_speed;
 
   pub.publish(msg);
 }
@@ -502,6 +506,8 @@ int main(int argc, char *argv[]) {
   size_t satelites_cnt = 0;
   float hdop = -1.0;
   float vdop = -1.0;
+  int odometer_active = 0;
+  float odometer_speed = 0.0;
 
   int last_gnss_fix_type, last_heading_initialized, last_dual_antena_active;
 
@@ -609,8 +615,16 @@ int main(int argc, char *argv[]) {
             } else {
               publish_info_data(data_pub, orientation_errors_msg,
                   last_gnss_fix_type, last_heading_initialized, last_dual_antena_active,
-                  satelites_cnt, hdop, vdop);
+                  satelites_cnt, hdop, vdop, odometer_active, odometer_speed);
             }
+          }
+        }
+
+        if (an_packet->id == packet_id_odometer_state) {
+          odometer_state_packet_t odometer_state_packet;
+          if(decode_odometer_state_packet(&odometer_state_packet, an_packet) == 0) {
+            odometer_active = odometer_state_packet.active;
+            odometer_speed = odometer_state_packet.speed;
           }
         }
 

@@ -7,3 +7,5 @@ int32 antena
 int32 satelites
 float32 hdop
 float32 vdop
+int32 odometer_active
+float32 odometer_speed
