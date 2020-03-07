@@ -95,28 +95,44 @@ int main(int argc, char *argv[])
 {
 	// Set up ROS node //
 	ros::init(argc, argv, "an_device");
-	ros::NodeHandle nh("~");
+	ros::NodeHandle nh();
+	ros::NodeHandle pnh("~");
 
 	// Set up the COM port
 	std::string com_port_s;
-	nh.param<std::string>("port", com_port_s, "/dev/ttyS0");
-	char *com_port = (char *)com_port_s.c_str();
-
+	char *com_port;
 	int baud_rate;
-	nh.param<int>("baud", baud_rate, 115200);
+	int loop_rate;
+	std::string imu_frame_id;
+	std::string nav_sat_frame_id;
+	std::string topic_prefix;
+
+	if (argc >= 3)
+	{
+		baud_rate = atoi(argv[2]);
+		loop_rate = atoi(argv[3]);
+	}
+	else
+	{
+		pnh.param("port", com_port_s, std::string("/dev/ttyUSB0")); // "/dev/ttyS0"
+		pnh.param("baud_rate", baud_rate, 115200);
+		pnh.param("loop_rate", loop_rate, 100);
+		com_port = (char *)com_port_s.c_str();
+	}
 
 	if (OpenComport(com_port, baud_rate))
 	{
 		ROS_INFO("Could not open serial port %s at %d baud.", com_port, baud_rate);
+		ros::shutdown();
 		exit(EXIT_FAILURE);
 	}
 	ROS_INFO("port:%s@%d", com_port, baud_rate);
 
 	// Initialise Publishers and Topics //
-	ros::Publisher nav_sat_fix_pub = nh.advertise<sensor_msgs::NavSatFix>("nav_sat_fix", 10);
-	ros::Publisher imu_pub = nh.advertise<sensor_msgs::Imu>("imu", 10);
-	ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("odom", 10);
-	ros::Publisher diagnostics_pub = nh.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
+	ros::Publisher nav_sat_fix_pub = pnh.advertise<sensor_msgs::NavSatFix>("nav_sat_fix", 10);
+	ros::Publisher imu_pub = pnh.advertise<sensor_msgs::Imu>("imu", 10);
+	ros::Publisher odom_pub = pnh.advertise<nav_msgs::Odometry>("odom", 10);
+	ros::Publisher diagnostics_pub = pnh.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
 
 	// Initialise gps message
 	sensor_msgs::NavSatFix nav_sat_fix_msg;
@@ -165,14 +181,10 @@ int main(int argc, char *argv[])
 	body_velocity_packet_t body_velocity_packet;											   // Packet 36
 	quaternion_orientation_packet_t quaternion_orientation_packet;							   // Packet 40
 
-	if (OpenComport(com_port, baud_rate))
-	{
-		printf("Could not open serial port: %s \n", com_port);
-		exit(EXIT_FAILURE);
-	}
-
 	an_decoder_initialise(&an_decoder);
 	int bytes_received;
+
+	ros::Rate rate(loop_rate);
 
 	// Loop continuously, polling for packets
 	while (ros::ok())
@@ -330,5 +342,7 @@ int main(int argc, char *argv[])
 				diagnostics_pub.publish(diagnostics_msg);
 			}
 		}
+
+		rate.sleep();
 	}
 }
