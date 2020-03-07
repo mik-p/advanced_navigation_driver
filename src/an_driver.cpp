@@ -1,40 +1,33 @@
-/****************************************************************/
-/*                                                              */
-/*          Advanced Navigation Packet Protocol Library         */
-/*        ROS Driver, Packet to Published Message Example       */
-/*          Copyright 2017, Advanced Navigation Pty Ltd         */
-/*                                                              */
-/****************************************************************/
-/*
+/**
+ * MIT License
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
+ * Copyright (c) 2017 an-scott
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
  * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 
-#include <ros/ros.h>
-#include <tf/tf.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
 #include <unistd.h>
 
-#include <diagnostic_msgs/DiagnosticArray.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/NavSatFix.h>
@@ -44,96 +37,43 @@
 #include <an_packet_protocol.h>
 #include <spatial_packets.h>
 
+#include <advanced_navigation_driver/an_driver.h>
+
+namespace an_driver
+{
+
 #define RADIANS_TO_DEGREES (180.0 / M_PI)
 
-// Convert NED orientation (Advanced Navigation) to ENU orientation (ROS)
-inline geometry_msgs::Quaternion nedToEnu(geometry_msgs::Quaternion const &in)
+ANDriver::ANDriver(ros::NodeHandle nh, ros::NodeHandle pnh) : nh_(nh), pnh_(pnh)
 {
-	tf::Quaternion enu(in.x, in.y, in.z, in.w); // x, y, z, w according to tf documentation
-	// To get from NED to ENU we have to:
-	// 1) Rotate 90 degrees around Z
-	// 2) Rotate the result 180 degrees around Y
-	tf::Transform z_90(tf::Quaternion(tf::Vector3(0, 0, 1), 0.5 * M_PI));
-	tf::Transform y_180(tf::Quaternion(tf::Vector3(0, 1, 0), M_PI));
-
-	enu = (y_180 * (z_90 * enu));
-	geometry_msgs::Quaternion out;
-	out.x = enu.x();
-	out.y = enu.y();
-	out.z = enu.z();
-	out.w = enu.w();
-	return out;
-}
-
-// Convert the packet status to a ros diagnostic message
-inline void appendSystemStatus(diagnostic_msgs::DiagnosticArray &status_array, unsigned int const status, int const level, std::string const &failure_message = "", std::string const &success_message = "")
-{
-	if (status)
-	{
-		diagnostic_msgs::DiagnosticStatus status_msg;
-		status_msg.level = level; // WARN=1 ERROR=2
-		status_msg.message = failure_message;
-		status_array.status.push_back(status_msg);
-	}
-}
-
-// Convert the packet status to a ros diagnostic message
-inline diagnostic_msgs::DiagnosticStatus filterStatusToMsg(unsigned int const status, int const level, std::string const &failure_message = "", std::string const &success_message = "")
-{
-	diagnostic_msgs::DiagnosticStatus status_msg;
-	status_msg.message = success_message;
-	status_msg.level = 0; // default OK state
-	if (!status)
-	{
-		status_msg.level = level; // WARN=1 ERROR=2
-		status_msg.message = failure_message;
-	}
-	return status_msg;
-}
-
-int main(int argc, char *argv[])
-{
-	// Set up ROS node //
-	ros::init(argc, argv, "an_device");
-	ros::NodeHandle nh();
-	ros::NodeHandle pnh("~");
+	// ros params
+	pnh.param("port", com_port_s_, std::string("/dev/ttyUSB0")); // "/dev/ttyS0"
+	pnh.param("baud_rate", baud_rate_, 115200);
+	pnh.param("loop_rate", loop_rate_, 100);
+	com_port_ = (char *)com_port_s_.c_str();
 
 	// Set up the COM port
-	std::string com_port_s;
-	char *com_port;
-	int baud_rate;
-	int loop_rate;
-	std::string imu_frame_id;
-	std::string nav_sat_frame_id;
-	std::string topic_prefix;
-
-	if (argc >= 3)
+	if (OpenComport(com_port_, baud_rate_))
 	{
-		baud_rate = atoi(argv[2]);
-		loop_rate = atoi(argv[3]);
-	}
-	else
-	{
-		pnh.param("port", com_port_s, std::string("/dev/ttyUSB0")); // "/dev/ttyS0"
-		pnh.param("baud_rate", baud_rate, 115200);
-		pnh.param("loop_rate", loop_rate, 100);
-		com_port = (char *)com_port_s.c_str();
-	}
-
-	if (OpenComport(com_port, baud_rate))
-	{
-		ROS_INFO("Could not open serial port %s at %d baud.", com_port, baud_rate);
+		ROS_INFO("Could not open serial port %s at %d baud.", com_port_, baud_rate_);
 		ros::shutdown();
-		exit(EXIT_FAILURE);
+		// exit(EXIT_FAILURE);
 	}
-	ROS_INFO("port:%s@%d", com_port, baud_rate);
+	ROS_INFO("port:%s@%d", com_port_, baud_rate_);
 
-	// Initialise Publishers and Topics //
-	ros::Publisher nav_sat_fix_pub = pnh.advertise<sensor_msgs::NavSatFix>("nav_sat_fix", 10);
-	ros::Publisher imu_pub = pnh.advertise<sensor_msgs::Imu>("imu", 10);
-	ros::Publisher odom_pub = pnh.advertise<nav_msgs::Odometry>("odom", 10);
-	ros::Publisher diagnostics_pub = pnh.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
+	// ros topics
+	nav_sat_fix_pub_ = pnh.advertise<sensor_msgs::NavSatFix>("nav_sat_fix", 10);
+	imu_pub_ = pnh.advertise<sensor_msgs::Imu>("imu", 10);
+	odom_pub_ = pnh.advertise<nav_msgs::Odometry>("odom", 10);
+	diagnostics_pub_ = pnh.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
+}
 
+ANDriver::~ANDriver()
+{
+}
+
+void ANDriver::loop()
+{
 	// Initialise gps message
 	sensor_msgs::NavSatFix nav_sat_fix_msg;
 	nav_sat_fix_msg.header.frame_id = "an_device";
@@ -184,9 +124,9 @@ int main(int argc, char *argv[])
 	an_decoder_initialise(&an_decoder);
 	int bytes_received;
 
-	ros::Rate rate(loop_rate);
-
 	// Loop continuously, polling for packets
+	ros::Rate rate(loop_rate_);
+
 	while (ros::ok())
 	{
 		if ((bytes_received = PollComport(an_decoder_pointer(&an_decoder), an_decoder_size(&an_decoder))) > 0)
@@ -336,13 +276,15 @@ int main(int argc, char *argv[])
 				an_packet_free(&an_packet);
 
 				// Publish messages //
-				nav_sat_fix_pub.publish(nav_sat_fix_msg);
-				odom_pub.publish(odom_msg);
-				imu_pub.publish(imu_msg);
-				diagnostics_pub.publish(diagnostics_msg);
+				nav_sat_fix_pub_.publish(nav_sat_fix_msg);
+				odom_pub_.publish(odom_msg);
+				imu_pub_.publish(imu_msg);
+				diagnostics_pub_.publish(diagnostics_msg);
 			}
 		}
 
 		rate.sleep();
 	}
 }
+
+} // namespace an_driver
