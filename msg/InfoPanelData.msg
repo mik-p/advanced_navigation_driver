@@ -1,0 +1,11 @@
+Header header
+float32 roll_error
+float32 pitch_error
+int32 fix_type
+int32 heading
+int32 antena
+int32 satelites
+float32 hdop
+float32 vdop
+int32 odometer_active
+float32 odometer_speed

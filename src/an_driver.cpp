@@ -38,6 +38,7 @@
 #include <spatial_packets.h>
 
 #include <advanced_navigation_driver/an_driver.h>
+#include <advanced_navigation_driver/anpp_logger.h>
 
 namespace an_driver
 {
@@ -48,9 +49,10 @@ ANDriver::ANDriver(ros::NodeHandle nh, ros::NodeHandle pnh) : nh_(nh), pnh_(pnh)
 {
 	// ros params
 	pnh.param("port", com_port_s_, std::string("/dev/ttyUSB0")); // "/dev/ttyS0"
+	com_port_ = (char *)com_port_s_.c_str();
 	pnh.param("baud_rate", baud_rate_, 115200);
 	pnh.param("loop_rate", loop_rate_, 100);
-	com_port_ = (char *)com_port_s_.c_str();
+	pnh.param("output_binary_log", output_binary_log_, std::string(""));
 
 	// Set up the COM port
 	if (OpenComport(com_port_, baud_rate_))
@@ -65,6 +67,7 @@ ANDriver::ANDriver(ros::NodeHandle nh, ros::NodeHandle pnh) : nh_(nh), pnh_(pnh)
 	nav_sat_fix_pub_ = pnh.advertise<sensor_msgs::NavSatFix>("nav_sat_fix", 10);
 	imu_pub_ = pnh.advertise<sensor_msgs::Imu>("imu", 10);
 	odom_pub_ = pnh.advertise<nav_msgs::Odometry>("odom", 10);
+	timeref_pub_ = nh.advertise<sensor_msgs::TimeReference>("timeref", 10);
 	diagnostics_pub_ = pnh.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
 }
 
@@ -108,6 +111,10 @@ void ANDriver::loop()
 											  0.0, 1.0, 0.0,
 											  0.0, 0.0, 1.0};
 
+	// init time ref msg
+	sensor_msgs::TimeReference time_ref;
+	time_ref.header.frame_id = "an_device";
+
 	// Status messages
 	diagnostic_msgs::DiagnosticArray diagnostics_msg;
 
@@ -120,9 +127,21 @@ void ANDriver::loop()
 	euler_orientation_standard_deviation_packet_t euler_orientation_standard_deviation_packet; // Packet 26
 	body_velocity_packet_t body_velocity_packet;											   // Packet 36
 	quaternion_orientation_packet_t quaternion_orientation_packet;							   // Packet 40
+	status_packet_t status_packet;															   // packet 23
+	satellites_packet_t satellites_packet;													   // packet 30
+	// running_time_packet_t time_packet;														   // packet 49
 
 	an_decoder_initialise(&an_decoder);
 	int bytes_received;
+
+	// start bin logger
+	ANPPLogger anpp_logger;
+	if (!output_binary_log_.empty())
+	{
+		anpp_logger.open(output_binary_log_);
+		ROS_INFO_STREAM("Binary log saved to: " << output_binary_log_);
+	}
+	ROS_INFO_STREAM("Output ANPP log file successfully opened");
 
 	// Loop continuously, polling for packets
 	ros::Rate rate(loop_rate_);
@@ -138,11 +157,33 @@ void ANDriver::loop()
 			// decode all the packets in the buffer //
 			while ((an_packet = an_packet_decode(&an_decoder)) != NULL)
 			{
+				ros::Time ros_now = ros::Time::now(); // time now
 
 				// acknowledgement packet (0) //
-				if (an_packet->id == 0)
+				if (an_packet->id == packet_id_acknowledge)
 				{
 					ROS_INFO("acknowledgement data: %d", an_packet->data[3]);
+				}
+
+				// status packet (23)
+				if (an_packet->id == packet_id_status)
+				{
+					if (decode_status_packet(&status_packet, an_packet) == 0)
+					{
+						// last_dual_antena_active = status_packet.filter_status.b.dual_antenna_heading_active;
+					}
+				}
+
+				// satellites packet (30)
+				if (an_packet->id == packet_id_satellites)
+				{
+					if (decode_satellites_packet(&satellites_packet, an_packet) == 0)
+					{
+						// satelites_cnt = satellites_packet.gps_satellites + satellites_packet.glonass_satellites +
+						// 				satellites_packet.beidou_satellites + satellites_packet.galileo_satellites + satellites_packet.sbas_satellites;
+						// hdop = satellites_packet.hdop;
+						// vdop = satellites_packet.vdop;
+					}
 				}
 
 				// system state packet (20) //
@@ -189,6 +230,12 @@ void ANDriver::loop()
 						imu_msg.angular_velocity.x = system_state_packet.angular_velocity[0];
 						imu_msg.angular_velocity.y = system_state_packet.angular_velocity[1];
 						imu_msg.angular_velocity.z = system_state_packet.angular_velocity[2];
+
+						// TIME REF
+						time_ref.header.stamp = ros_now;
+						float hourTimestamp = system_state_packet.unix_time_seconds % 3600 + system_state_packet.microseconds * 1e-6;
+						float timestamp = fixHourOverflow(hourTimestamp);
+						time_ref.time_ref = ros::Time(timestamp);
 
 						// Filter Status
 						diagnostics_msg.header.stamp.sec = system_state_packet.unix_time_seconds;
@@ -266,11 +313,24 @@ void ANDriver::loop()
 					}
 				}
 
+				if (an_packet->id == packet_id_odometer_state)
+				{
+					odometer_state_packet_t odometer_state_packet;
+					if (decode_odometer_state_packet(&odometer_state_packet, an_packet) == 0)
+					{
+						// odometer_active = odometer_state_packet.active;
+						// odometer_speed = odometer_state_packet.speed;
+					}
+				}
+
 				// receiver information packet (69) //
-				if (an_packet->id == 69)
+				if (an_packet->id == packet_id_gnss_receiver_information)
 				{
 					ROS_INFO("receiver information: %d", an_packet->data[0]);
 				}
+
+				// log bin packet
+				anpp_logger.write(*an_packet);
 
 				// Ensure that you free the an_packet when your done with it //
 				// or you will leak memory                                   //
@@ -280,6 +340,7 @@ void ANDriver::loop()
 				nav_sat_fix_pub_.publish(nav_sat_fix_msg);
 				odom_pub_.publish(odom_msg);
 				imu_pub_.publish(imu_msg);
+				timeref_pub_.publish(time_ref);
 				diagnostics_pub_.publish(diagnostics_msg);
 			}
 		}

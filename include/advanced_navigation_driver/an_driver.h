@@ -24,6 +24,8 @@
 
 #pragma once
 
+#include <eigen3/Eigen/Eigen>
+
 #include <ros/ros.h>
 #include <geometry_msgs/Quaternion.h>
 #include <tf/tf.h>
@@ -84,6 +86,52 @@ public:
         return status_msg;
     }
 
+    static inline Eigen::Matrix3f rollM(const float roll)
+    {
+        Eigen::Matrix3f Rx;
+        float cr = cos(roll);
+        float sr = sin(roll);
+        Rx << 1.0, 0.0, 0.0,
+            0.0, cr, -sr,
+            0.0, sr, cr;
+        return Rx;
+    }
+
+    static inline Eigen::Matrix3f pitchM(const float pitch)
+    {
+        Eigen::Matrix3f Ry;
+        float cp = cos(pitch);
+        float sp = sin(pitch);
+        Ry << cp, 0.0, sp,
+            0.0, 1.0, 0.0,
+            -sp, 0.0, cp;
+        return Ry;
+    }
+
+    static inline Eigen::Matrix3f yawM(const float yaw)
+    {
+        Eigen::Matrix3f Rz;
+        float cy = cos(yaw);
+        float sy = sin(yaw);
+        Rz << cy, -sy, 0.0,
+            sy, cy, 0.0,
+            0.0, 0.0, 1.0;
+        return Rz;
+    }
+
+    static inline float fixHourOverflow(const float hourTimestamp)
+    {
+        static int hours = 0;
+        static float last_timestamp = -1.0;
+        if (last_timestamp > hourTimestamp)
+        {
+            hours++;
+            ROS_INFO_STREAM("Hour overflow, hours: " << hours);
+        }
+        last_timestamp = hourTimestamp;
+        return last_timestamp + 60 * 60 * hours;
+    }
+
     void loop();
 
 private:
@@ -97,10 +145,12 @@ private:
     std::string imu_frame_id_;
     std::string nav_sat_frame_id_;
     std::string topic_prefix_;
+    std::string output_binary_log_;
     // publishers
     ros::Publisher nav_sat_fix_pub_;
     ros::Publisher imu_pub_;
     ros::Publisher odom_pub_;
+    ros::Publisher timeref_pub_;
     ros::Publisher diagnostics_pub_;
 };
 
