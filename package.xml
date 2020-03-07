@@ -4,7 +4,7 @@
   <version>1.0.0</version>
   <description>The Advanced Navigation driver package for ROS.</description>
 
-  <maintainer email="support@advancednavigation.com.au">support@advancednavigation.com.au</maintainer>
+  <maintainer email="mik-p@github.com">mik-p</maintainer>
 
   <license>MIT</license>
 
@@ -16,4 +16,5 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>tf</depend>
+
 </package>
