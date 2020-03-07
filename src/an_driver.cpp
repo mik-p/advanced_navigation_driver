@@ -129,6 +129,7 @@ void ANDriver::loop()
 
 	while (ros::ok())
 	{
+		ros::spinOnce();
 		if ((bytes_received = PollComport(an_decoder_pointer(&an_decoder), an_decoder_size(&an_decoder))) > 0)
 		{
 			// increment the decode buffer length by the number of bytes received //
