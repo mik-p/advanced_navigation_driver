@@ -1,0 +1,19 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+    <!-- Start the Advanced Navigation Spatial Node -->
+    <node name="advanced_navigation_driver" pkg="advanced_navigation_driver"
+        type="advanced_navigation_driver">
+        <param name="imu_frame_id"     value="an_dev_imu"/>
+        <param name="nav_sat_frame_id" value="an_dev_sat"/>
+        <param name="device_time"      value="false"/>
+        <param name="remove_gravity"   value="false"/>
+        <param name="topic_prefix"     value="an_device"/>
+        <param name="baud_rate"        value="2000000"/>
+        <param name="rate"             value="200"/>
+        <param name="antenna_offset_x" value="0.0"/>
+        <param name="antenna_offset_y" value="0.0"/>
+        <param name="antenna_offset_z" value="0.0"/>
+        <param name="debug"            value="0"/>
+    </node>
+</launch>
+

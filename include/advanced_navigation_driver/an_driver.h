@@ -138,6 +138,7 @@ private:
     ros::NodeHandle nh_;  // node handle
     ros::NodeHandle pnh_; // private node handle
     // parameters
+    int debug_;
     std::string com_port_s_;
     char *com_port_;
     int baud_rate_;
@@ -145,6 +146,9 @@ private:
     std::string imu_frame_id_;
     std::string nav_sat_frame_id_;
     std::string output_binary_log_;
+    double antenna_offset_[3] = {0};
+    bool device_time_;
+    bool remove_gravity_;
     // publishers
     ros::Publisher nav_sat_fix_pub_;
     ros::Publisher imu_pub_;
