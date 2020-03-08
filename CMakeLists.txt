@@ -104,11 +104,11 @@ add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catk
 
 # change baud rate
 add_executable(an_change_baudrate
-  ${PROJECT_NAME}_sdk
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
+  src/an_change_baudrate.cpp
 )
 
 target_link_libraries(an_change_baudrate
+  ${PROJECT_NAME}_sdk
+  ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )

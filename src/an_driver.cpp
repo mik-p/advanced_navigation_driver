@@ -479,6 +479,15 @@ void ANDriver::loop()
 					ROS_INFO("send at %g\n", 1e6f / (ros_msec - ros_last));
 				ros_last = ros_msec;
 
+				// publish tf
+				// tf_msg.stamp_ = ros_now;
+				// tf_msg.setOrigin(tf::Vector3(
+				// 	orientation_msg.pose.position.x, orientation_msg.pose.position.y, orientation_msg.pose.position.z));
+				// tf_msg.setRotation(tf::Quaternion(
+				// 	orientation_msg_with_heading.pose.orientation.x, orientation_msg_with_heading.pose.orientation.y,
+				// 	orientation_msg_with_heading.pose.orientation.z, orientation_msg_with_heading.pose.orientation.w));
+				// tf_broadcaster.sendTransform(tf_msg);
+
 				// Publish messages //
 				nav_sat_fix_pub_.publish(nav_sat_fix_msg);
 				odom_pub_.publish(odom_msg);
