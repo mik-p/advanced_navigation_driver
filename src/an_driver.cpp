@@ -52,6 +52,8 @@ ANDriver::ANDriver(ros::NodeHandle nh, ros::NodeHandle pnh) : nh_(nh), pnh_(pnh)
 	com_port_ = (char *)com_port_s_.c_str();
 	pnh.param("baud_rate", baud_rate_, 115200);
 	pnh.param("loop_rate", loop_rate_, 100);
+	pnh.param("imu_frame_id", imu_frame_id_, std::string("imu"));
+	pnh.param("navsat_frame_id", nav_sat_frame_id_, std::string("navsat"));
 	pnh.param("output_binary_log", output_binary_log_, std::string(""));
 
 	// Set up the COM port
@@ -129,7 +131,13 @@ void ANDriver::loop()
 	quaternion_orientation_packet_t quaternion_orientation_packet;							   // Packet 40
 	status_packet_t status_packet;															   // packet 23
 	satellites_packet_t satellites_packet;													   // packet 30
+	odometer_state_packet_t odometer_state_packet;											   // packet 51
 	// running_time_packet_t time_packet;														   // packet 49
+
+	// satellite metrics
+	size_t satelites_cnt = 0;
+	float hdop = -1.0;
+	float vdop = -1.0;
 
 	an_decoder_initialise(&an_decoder);
 	int bytes_received;
@@ -149,6 +157,7 @@ void ANDriver::loop()
 	while (ros::ok())
 	{
 		ros::spinOnce();
+
 		if ((bytes_received = PollComport(an_decoder_pointer(&an_decoder), an_decoder_size(&an_decoder))) > 0)
 		{
 			// increment the decode buffer length by the number of bytes received //
@@ -179,10 +188,10 @@ void ANDriver::loop()
 				{
 					if (decode_satellites_packet(&satellites_packet, an_packet) == 0)
 					{
-						// satelites_cnt = satellites_packet.gps_satellites + satellites_packet.glonass_satellites +
-						// 				satellites_packet.beidou_satellites + satellites_packet.galileo_satellites + satellites_packet.sbas_satellites;
-						// hdop = satellites_packet.hdop;
-						// vdop = satellites_packet.vdop;
+						satelites_cnt = satellites_packet.gps_satellites + satellites_packet.glonass_satellites +
+										satellites_packet.beidou_satellites + satellites_packet.galileo_satellites + satellites_packet.sbas_satellites;
+						hdop = satellites_packet.hdop;
+						vdop = satellites_packet.vdop;
 					}
 				}
 
@@ -313,9 +322,9 @@ void ANDriver::loop()
 					}
 				}
 
+				// odometer state (51)
 				if (an_packet->id == packet_id_odometer_state)
 				{
-					odometer_state_packet_t odometer_state_packet;
 					if (decode_odometer_state_packet(&odometer_state_packet, an_packet) == 0)
 					{
 						// odometer_active = odometer_state_packet.active;

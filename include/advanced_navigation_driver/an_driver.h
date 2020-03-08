@@ -144,7 +144,6 @@ private:
     int loop_rate_;
     std::string imu_frame_id_;
     std::string nav_sat_frame_id_;
-    std::string topic_prefix_;
     std::string output_binary_log_;
     // publishers
     ros::Publisher nav_sat_fix_pub_;

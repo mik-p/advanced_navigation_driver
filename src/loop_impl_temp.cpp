@@ -289,79 +289,6 @@ void publish_info_data_failure(const ros::Publisher &pub)
     pub.publish(msg);
 }
 
-class JsonGenerator
-{
-public:
-    JsonGenerator(void) : isOpened(false), isFirst(true)
-    {
-    }
-
-    void openFile(const string &filename)
-    {
-        file.open(filename.c_str());
-        file << endl
-             << "[" << endl;
-        isOpened = true;
-    }
-
-    void genDict(const float timeStamp,
-                 const geometry_msgs::Quaternion &quaternion,
-                 const geometry_msgs::Quaternion &quaternion_full,
-                 const geometry_msgs::Vector3 eulerStdDev,
-                 const geometry_msgs::Vector3 angularSpeed)
-    {
-        if (isOpened)
-        {
-            if (!isFirst)
-            {
-                file << ", " << endl;
-            }
-            isFirst = false;
-            file << std::fixed << "{ \"type\":\"quat_data\", \"timeStamp\":" << std::setprecision(3) << timeStamp << ", ";
-            file << std::setprecision(8);
-            file << "\"quaternion\":[" << quaternion.x << ", " << quaternion.y << ", " << quaternion.z << ", " << quaternion.w << "], ";
-            file << "\"quaternion_full\":[" << quaternion_full.x << ", " << quaternion_full.y << ", " << quaternion_full.z << ", " << quaternion_full.w << "], ";
-            file << "\"error\":[" << eulerStdDev.x << ", " << eulerStdDev.y << ", " << eulerStdDev.z << "], ";
-            file << "\"angularSpeed\":[" << angularSpeed.x << ", " << angularSpeed.y << ", " << angularSpeed.z << "] }" << flush;
-        }
-    }
-
-    void close(void)
-    {
-        if (isOpened)
-        {
-            file << "]" << endl;
-            file.close();
-        }
-    }
-
-private:
-    ofstream file;
-    bool isOpened, isFirst;
-};
-
-JsonGenerator generator;
-
-void shutdownHandler(int sig)
-{
-    generator.close();
-    ros::shutdown();
-}
-
-// SpatialDual publish NEMEA timestamps within current hour to Velodyne
-float fixHourOverflow(const float hourTimestamp)
-{
-    static int hours = 0;
-    static float last_timestamp = -1.0;
-    if (last_timestamp > hourTimestamp)
-    {
-        hours++;
-        ROS_INFO_STREAM("Hour overflow, hours: " << hours);
-    }
-    last_timestamp = hourTimestamp;
-    return last_timestamp + 60 * 60 * hours;
-}
-
 void send_and_free_packet(an_packet_t *packet)
 {
     an_packet_encode(packet);
@@ -384,27 +311,6 @@ std_msgs::Float32 norm(const float velocity[])
 
 int main(int argc, char *argv[])
 {
-    // Set up ROS node //
-    ros::init(argc, argv, "an_device_node", ros::init_options::NoSigintHandler);
-    ros::NodeHandle nh;
-    signal(SIGINT, shutdownHandler);
-    ros::NodeHandle pnh("~");
-
-    printf("\nYour Advanced Navigation ROS driver is currently running\nPress Ctrl-C to interrupt\n");
-
-    // Set up the COM port
-    std::string com_port;
-    int baud_rate;
-    float std_deviation_threshold;
-    std::string output_filename, output_binary_log;
-    bool should_discard_heading;
-
-    pnh.param<std::string>("uart_port", com_port, "/dev/ttyUSB0");
-    pnh.param<int>("uart_baud_rate", baud_rate, 1000000);
-    pnh.param<std::string>("output_file", output_filename, "");
-    pnh.param<std::string>("output_binary_log", output_binary_log, "");
-    pnh.param<bool>("discard_heading", should_discard_heading, true);
-
     // Initialise Publishers and Topics //
     ros::Publisher orientation_pub = nh.advertise<geometry_msgs::PoseStamped>("imu_pose", 10);
     ros::Publisher orientation_err_pub = nh.advertise<geometry_msgs::Vector3Stamped>("imu_pose_errors", 10);
@@ -455,28 +361,10 @@ int main(int argc, char *argv[])
     }
     ROS_INFO_STREAM("Serial port successfully opened");
 
-    an_decoder_initialise(&an_decoder);
-
-    if (!output_filename.empty())
-    {
-        generator.openFile(output_filename);
-        ROS_INFO_STREAM("OUTPUT_FILE: " << output_filename);
-    }
-    ROS_INFO_STREAM("Output JSON file successfully opened");
-
-    if (!output_binary_log.empty())
-    {
-        anpp_logger.open(output_binary_log);
-        ROS_INFO_STREAM("Binary log saved to: " << output_binary_log);
-    }
-    ROS_INFO_STREAM("Output ANPP log file successfully opened");
-
     bool imu_filter_failure = false;
     bool dual_antena_package_received = false;
     bool alignment_package_received = false;
-    size_t satelites_cnt = 0;
-    float hdop = -1.0;
-    float vdop = -1.0;
+
     int odometer_active = 0;
     float odometer_speed = 0.0;
 
@@ -485,18 +373,11 @@ int main(int argc, char *argv[])
     // Loop continuously, polling for packets
     while (ros::ok())
     {
-        ros::spinOnce();
         if ((bytes_received = PollComport(an_decoder_pointer(&an_decoder), an_decoder_size(&an_decoder))) > 0)
         {
-            // increment the decode buffer length by the number of bytes received //
-            an_decoder_increment(&an_decoder, bytes_received);
-
             // decode all the packets in the buffer //
             while ((an_packet = an_packet_decode(&an_decoder)) != NULL)
             {
-
-                ros::Time ros_now = ros::Time::now();
-                //cerr << "Packet came, ID: " << (int)an_packet->id << endl;
 
                 // system state packet //
                 if (an_packet->id == packet_id_system_state)
@@ -563,27 +444,6 @@ int main(int argc, char *argv[])
                     }
                 }
 
-                if (an_packet->id == packet_id_status)
-                {
-                    status_packet_t status_packet;
-                    if (decode_status_packet(&status_packet, an_packet) == 0)
-                    {
-                        last_dual_antena_active = status_packet.filter_status.b.dual_antenna_heading_active;
-                    }
-                }
-
-                if (an_packet->id == packet_id_satellites)
-                {
-                    satellites_packet_t satellites_packet;
-                    if (decode_satellites_packet(&satellites_packet, an_packet) == 0)
-                    {
-                        satelites_cnt = satellites_packet.gps_satellites + satellites_packet.glonass_satellites +
-                                        satellites_packet.beidou_satellites + satellites_packet.galileo_satellites + satellites_packet.sbas_satellites;
-                        hdop = satellites_packet.hdop;
-                        vdop = satellites_packet.vdop;
-                    }
-                }
-
                 if (an_packet->id == packet_id_euler_orientation_standard_deviation)
                 {
                     if (decode_euler_orientation_standard_deviation_packet(&euler_orientation_standard_deviation_packet, an_packet) == 0)
@@ -608,22 +468,8 @@ int main(int argc, char *argv[])
                     }
                 }
 
-                if (an_packet->id == packet_id_odometer_state)
-                {
-                    odometer_state_packet_t odometer_state_packet;
-                    if (decode_odometer_state_packet(&odometer_state_packet, an_packet) == 0)
-                    {
-                        odometer_active = odometer_state_packet.active;
-                        odometer_speed = odometer_state_packet.speed;
-                    }
-                }
-
                 dual_antena_package_received |= (an_packet->id == packet_id_dual_antenna_configuration);
                 alignment_package_received |= (an_packet->id == packet_id_installation_alignment);
-
-                anpp_logger.write(*an_packet);
-
-                an_packet_free(&an_packet);
             }
         }
     }
