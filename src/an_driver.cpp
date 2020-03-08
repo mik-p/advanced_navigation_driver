@@ -74,8 +74,8 @@ ANDriver::ANDriver(ros::NodeHandle nh, ros::NodeHandle pnh) : nh_(nh), pnh_(pnh)
 	ROS_INFO("port:%s@%d", com_port_, baud_rate_);
 
 	// ros topics
-	nav_sat_fix_pub_ = pnh.advertise<sensor_msgs::NavSatFix>("nav_sat_fix", 10);
-	imu_pub_ = pnh.advertise<sensor_msgs::Imu>("imu", 10);
+	nav_sat_fix_pub_ = pnh.advertise<sensor_msgs::NavSatFix>("fix", 10);
+	imu_pub_ = pnh.advertise<sensor_msgs::Imu>("imu/data", 10);
 	odom_pub_ = pnh.advertise<nav_msgs::Odometry>("odom", 10);
 	timeref_pub_ = nh.advertise<sensor_msgs::TimeReference>("timeref", 10);
 	diagnostics_pub_ = pnh.advertise<diagnostic_msgs::DiagnosticArray>("diagnostics", 10);
